@@ -66,7 +66,8 @@ def check_consistency(A, weights):
     CR = consistency_ratio(CI, RI)  
     return CR  
   
-# 示例：一个3x3的判断矩阵  
+# 示例：一个3x3的判断矩阵
+# 实际应用替换成对应的判断矩阵即可
 A = np.array([[1, 2, 3], [1/2, 1, 2], [1/3, 1/2, 1]])  
   
 # 计算权重  
