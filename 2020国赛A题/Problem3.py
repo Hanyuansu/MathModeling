@@ -96,7 +96,7 @@ initial_guess = [1e-6, 30] * n_segments
 bounds = [(1e-8, 1e-4), (1, 200)] * n_segments
 result = minimize(objective, initial_guess, bounds=bounds)
 best_params = result.x
-# 示例调用（你可替换为实际最优解）
+
 
 (best_T_set, best_v, best_S, t_best, T_best), minS_history = random_search_area_minimize(best_params)
 print("最优速度 v =", best_v, "cm/min")

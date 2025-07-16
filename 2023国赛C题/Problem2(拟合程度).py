@@ -6,10 +6,10 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Input, LSTM, Dense
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import EarlyStopping
+from keras.models import Sequential
+from keras.layers import Input, LSTM, Dense
+from keras.optimizers import Adam
+from keras.callbacks import EarlyStopping
 
 # ========== GPU 配置 ==========
 gpus = tf.config.list_physical_devices('GPU')

@@ -1,4 +1,4 @@
-#层次分析法
+#层次分析法，主观方法
 #参考：https://blog.csdn.net/qq_41686130/article/details/122081827
 import numpy as np
 
@@ -71,7 +71,7 @@ def check_consistency(A, weights):
 A = np.array([[1, 2, 3], [1/2, 1, 2], [1/3, 1/2, 1]])  
   
 # 计算权重  
-weights = compute_weights(A,'eigen')  
+weights = compute_weights(A,'geometric')  
 print("Weights:", weights)  
   
 # 一致性检验  
