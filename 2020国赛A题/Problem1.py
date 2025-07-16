@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 plt.rcParams['font.family'] = 'SimHei'
 plt.rcParams['axes.unicode_minus'] = False
-# import os
+import os
 # os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = r"D:\anaconda3\Library\plugins\platforms"
 
 
