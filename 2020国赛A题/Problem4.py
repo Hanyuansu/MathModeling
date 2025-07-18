@@ -79,7 +79,7 @@ def random_search_multiobjective(best_params, N=10000, combined_func=None):
         area = compute_area(t_sim, T_sim)
         sym = compute_symmetry(t_sim, T_sim)
 
-        if not check(t_sim, T_sim) or area == np.inf or sym == np.inf:
+        if not check(t_sim, T_sim) or area == np.inf or sym == np.inf or area < area_min or sym < sym_min:
             obj = 1e6
         else:
             obj = combined_func(area, sym)

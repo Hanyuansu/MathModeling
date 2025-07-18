@@ -1,4 +1,4 @@
-#层次分析法，主观方法
+#层次分析法，主观方法，求权重
 #参考：https://blog.csdn.net/qq_41686130/article/details/122081827
 import numpy as np
 
