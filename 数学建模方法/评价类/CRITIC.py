@@ -9,17 +9,19 @@ def is_normal_distribution(series, alpha=0.05):
     stat, p = shapiro(series)
     return p > alpha
 
-# 根据分布类型进行正向化处理：正态分布用z-score，其他用min-max
+# 步骤：先分布判断再标准化，最后统一
 def normalize_column(series):
     if is_normal_distribution(series):
-        # Z-score标准化
-        return (series - series.mean()) / series.std(ddof=0)
+        normed = (series - series.mean()) / series.std(ddof=1)
     else:
-        # Min-Max归一化
-        min_val, max_val = series.min(), series.max()
-        if max_val == min_val:
-            return pd.Series(0, index=series.index)  # 避免除以0
-        return (series - min_val) / (max_val - min_val)
+        normed = (series - series.min()) / (series.max() - series.min())
+
+    # 再做一次 min-max 统一处理，防止尺度不一致
+    min_val, max_val = normed.min(), normed.max()
+    if max_val == min_val:
+        return pd.Series(0, index=series.index)
+    return (normed - min_val) / (max_val - min_val)
+
 
 # 对整个DataFrame进行正向化处理
 def normalize_dataframe(df):
