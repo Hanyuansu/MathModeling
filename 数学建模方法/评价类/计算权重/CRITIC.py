@@ -1,4 +1,4 @@
-# CRITIC方法：客观方法，求权重
+# CRITIC方法：客观方法
 
 import numpy as np
 import pandas as pd
@@ -10,7 +10,6 @@ def is_normal_distribution(series, alpha=0.05):
     return p > alpha
 
 # 步骤：先分布判断再标准化，最后统一
-#负向指标与正向指标的处理是相反的
 def normalize_column(series):
     if is_normal_distribution(series):
         normed = (series - series.mean()) / series.std(ddof=1)
