@@ -25,7 +25,7 @@ def save_and_show(fig, filename):
 
 # 1. 读取数据
 sales_df = pd.read_excel("附件2.xlsx")
-info_df = pd.read_excel("附件1.xlsx")
+info_df = pd.read_excel("附件1.csv")
 
 # 2. 重命名 & 合并品类
 sales_df.rename(columns={'单品编码': '商品编号', '销量(千克)': '销售数量'}, inplace=True)

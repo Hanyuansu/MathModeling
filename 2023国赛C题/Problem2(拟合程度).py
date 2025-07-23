@@ -27,7 +27,7 @@ os.makedirs(output_dir, exist_ok=True)
 
 # ========== 1. 读取并合并数据 ==========
 sales = pd.read_excel("附件2.xlsx", engine="openpyxl")
-info  = pd.read_excel("附件1.xlsx", engine="openpyxl")
+info  = pd.read_excel("附件1.csv", engine="openpyxl")
 cost  = pd.read_excel("附件3.xlsx", engine="openpyxl")
 
 sales.rename(columns={'单品编码':'商品编号','销售日期':'日期','销量(千克)':'销量'}, inplace=True)

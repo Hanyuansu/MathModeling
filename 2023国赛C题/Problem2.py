@@ -21,7 +21,7 @@ os.makedirs(output_dir, exist_ok=True)
 
 # ========== 1. 读取与预处理 ==========
 sales_df = pd.read_excel("附件2.xlsx", engine="openpyxl")
-info_df  = pd.read_excel("附件1.xlsx", engine="openpyxl")
+info_df  = pd.read_excel("附件1.csv", engine="openpyxl")
 cost_df  = pd.read_excel("附件3.xlsx", engine="openpyxl")
 loss_df  = pd.read_excel("附件4.xlsx", engine="openpyxl")
 
