@@ -63,6 +63,6 @@ plt.tight_layout()
 plt.show()
 
 # === 7. 输出最优结果 ===
-print(f"最优 δ = {delta_min_mean:.3f} m，对应最大误差 = {min_mean_error:.4f} m")
+print(f"最优 δ = {delta_min_mean:.2f} m，对应最大误差 = {min_mean_error:.2f} m")
 # z=-R-δ+x^2/4(F+δ),F=0.466R
 # x^2+y^2=561.5*(z+300.79)
