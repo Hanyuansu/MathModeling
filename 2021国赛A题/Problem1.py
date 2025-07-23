@@ -5,14 +5,12 @@ plt.rcParams['font.family'] = 'SimHei'
 plt.rcParams['axes.unicode_minus'] = False
 
 # === 1. 读取数据 ===
-df = pd.read_excel("附件1.xlsx")
 x = df['X坐标（米）'].values
 y = df['Y坐标（米）'].values
 z = df['Z坐标（米）'].values
 
 # === 2. 计算球面半径 ===
 r_data = np.sqrt(x**2 + y**2 + z**2)
-R = round(np.mean(r_data),2)
 
 # === 3. 参数设置 ===
 F = 0.466 * R
@@ -24,7 +22,6 @@ x_proj = np.linspace(-150, 150, 100000)
 
 # === 4. 计算误差函数 ===
 def compute_errors(delta):
-    zp = -R - delta + x_proj**2 / (4 * (F + delta))  # 抛物面拟合
     norm = np.sqrt(x_proj**2 + zp**2)
     xb = x_proj / norm * R
     zb = zp / norm * R
@@ -63,10 +60,5 @@ plt.tight_layout()
 plt.show()
 
 # === 7. 输出最优结果 ===
-print(f"最优 δ = {delta_min_mean:.2f} m，对应最大误差 = {min_mean_error:.2f} m")
-delta = round(delta_min_mean,2)
-za = -R - delta
-A=np.array([0,0,za])
-print(A)
 # z=-R-δ+x^2/4(F+δ),F=0.466R
 # x^2+y^2=561.5*(z+300.79)
