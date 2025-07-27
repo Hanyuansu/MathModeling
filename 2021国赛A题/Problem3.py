@@ -1,9 +1,7 @@
 import pandas as pd
 import numpy as np
 import math
-import matplotlib.pyplot as plt
-plt.rcParams['font.family'] = 'SimHei'
-plt.rcParams['axes.unicode_minus'] = False
+
 #1.构建旋转矩阵,最后一列用于记录编号
 a=np.radians(36.795)
 b=np.radians(90-78.169)
@@ -50,18 +48,22 @@ coords = np.column_stack((x, y, z,index)).T
 #旋转
 coords=R0@coords #天体坐标系下的主索节点坐标
 coords=coords.T
-print(coords)
+#print(coords)
 
 #筛选应该调整的主索节点
 def is_valid(coord):
     x,y,z,index=coord
     return (np.square(x)+np.square(y))*(np.square(r*r/p-R-0.39)+np.square(r)) <= np.square(R*r)
-adjust_coords = []
-adjust_indices = []
-for i, coord in enumerate(coords):
-    if is_valid(coord):
-        adjust_coords.append(coord)
-        adjust_indices.append(i)
+# 保留满足条件的坐标
+# adjust_coords=[coord for coord in coords if is_valid(coord)]
+# # 提取原始 DataFrame 的行号
+# row_indices = [int(coord[3]) for coord in adjust_coords]
+# # 根据行号查找对应主索节点编号
+# adjust_ids = df.iloc[row_indices]["主索节点编号"].values
+# adjust_coords = np.array(adjust_coords)
+# # print("符合条件的节点个数:", adjust_coords.shape[0])
+# # print("对应主索节点编号:", adjust_ids)
+# m=adjust_coords.shape[0]
 
 #4.构造邻接矩阵
 df1 = pd.read_excel("附件3.xlsx", usecols=["主索节点1", "主索节点2", "主索节点3"])
@@ -95,22 +97,22 @@ for _, row in df.iterrows():
     l[i]=np.sqrt((x-xc)**2+(y-yc)**2+(z-zc)**2)
 # print(l)
 
-#验证一下
-L=[]
-for adjust_coord in adjust_coords:
-    x,y,z,index=adjust_coord
-    row_indices = int(index)
-    row=df.iloc[row_indices]
-    i=node_to_idx[row['主索节点编号']]
-    xc=row['基准态时上端点X坐标（米）']
-    yc=row['基准态时上端点Y坐标（米）']
-    zc=row['基准态时上端点Z坐标（米）']
-    coord=np.array([[xc,yc,zc,1]]).T
-    coord=(R0@coord)
-    xc,yc,zc,index=coord
-    if(abs(np.sqrt((x-xc)**2+(y-yc)**2+(z-zc)**2))-l[i]<=0.0001):
-        L.append(1)
-print(len(L))
+##验证一下
+# L=[]
+# for adjust_coord in adjust_coords:
+#     x,y,z,index=adjust_coord
+#     row_indices = int(index)
+#     row=df.iloc[row_indices]
+#     i=node_to_idx[row['主索节点编号']]
+#     xc=row['基准态时上端点X坐标（米）']
+#     yc=row['基准态时上端点Y坐标（米）']
+#     zc=row['基准态时上端点Z坐标（米）']
+#     coord=np.array([[xc,yc,zc,1]]).T
+#     coord=(R0@coord)
+#     xc,yc,zc,index=coord
+#     if(abs(np.sqrt((x-xc)**2+(y-yc)**2+(z-zc)**2))-l[i]<=0.0001):
+#         L.append(1)
+# print(len(L))
 
 #6.根据主索节点坐标计算径向到理想抛物面的坐标
 def project_to_paraboloid(xp, yp, zp, p):
@@ -131,6 +133,13 @@ def project_to_paraboloid(xp, yp, zp, p):
         x_p = np.copysign(np.sqrt(max(x_sq, 0.0)), xp)
         y_p = b * x_p
     return x_p, y_p, z_p
+
+adjust_coords = []
+adjust_indices = []
+for i, coord in enumerate(coords):
+    if is_valid(coord):
+        adjust_coords.append(coord)
+        adjust_indices.append(i)
 
 x0 = coords[adjust_indices, :3].reshape(-1)
 
@@ -197,7 +206,7 @@ def edge_constraint(X):
     return np.array(constraints)
 
 # 数值梯度函数（更快）
-def numerical_gradient(func, X, eps=1e-3):
+def numerical_gradient(func, X, eps=1e-4):
     grad = np.zeros_like(X)
     for i in range(len(X)):
         X1, X2 = X.copy(), X.copy()
@@ -207,108 +216,48 @@ def numerical_gradient(func, X, eps=1e-3):
     return grad
 from scipy.optimize import minimize
 # 优化
-# res = minimize(
-#     objective, x0, method='trust-constr',
-#     jac=lambda X: numerical_gradient(objective, X),
-#     constraints=[
-#         {'type': 'ineq', 'fun': stretch_constraint},
-#         {'type': 'ineq', 'fun': edge_constraint}
-#     ],
-#     options={'verbose': 3, 'maxiter': 10}
-# )
-#
-# X_opt = coords[:, :3].copy()
-# X_opt[adjust_indices] = res.x.reshape(-1, 3)
-#
-# # 计算误差
-# errors = []
-# for idx in adjust_indices:
-#     x, y, z = X_opt[idx]
-#     xp, yp, zp = project_to_paraboloid(x, y, z, p/2)
-#     d = np.sqrt((x - xp)**2 + (y - yp)**2 + (z - zp)**2)
-#     errors.append(d)
-#
-# errors = np.array(errors)
-# print("最大误差:", errors.max())
-# print("最小误差:", errors.min())
-# print("平均误差:", errors.mean())
-# print("误差标准差:", errors.std())
-#
-# # 导出优化后结果
-# adjust_node_ids = [df.iloc[int(coords[idx][3])]["主索节点编号"] for idx in adjust_indices]
-# df_result = pd.DataFrame(X_opt[adjust_indices], columns=["X坐标", "Y坐标", "Z坐标"])
-# df_result["主索节点编号"] = adjust_node_ids
-# df_result["误差"] = errors
-# df_result.to_excel("优化后的主索节点坐标与误差.xlsx", index=False)
-#
-# # 误差可视化
-# import matplotlib.pyplot as plt
-#
-# plt.figure(figsize=(8, 5))
-# plt.hist(errors, bins=30, edgecolor='black', color='lightblue')
-# plt.xlabel('误差 (m)')
-# plt.ylabel('节点数')
-# plt.title('优化后主索节点误差分布')
-# plt.grid(True)
-# plt.show()
+res = minimize(
+    objective, x0, method='trust-constr',
+    jac=lambda X: numerical_gradient(objective, X),
+    constraints=[
+        {'type': 'ineq', 'fun': stretch_constraint},
+        {'type': 'ineq', 'fun': edge_constraint}
+    ],
+    options={'verbose': 3, 'maxiter': 500}
+)
 
+X_opt = coords[:, :3].copy()
+X_opt[adjust_indices] = res.x.reshape(-1, 3)
 
-df_opt = pd.read_excel("优化后的主索节点坐标与误差.xlsx")
-# 存储结果
-result = []
+# 计算误差
+errors = []
+for idx in adjust_indices:
+    x, y, z = X_opt[idx]
+    xp, yp, zp = project_to_paraboloid(x, y, z, p/2)
+    d = np.sqrt((x - xp)**2 + (y - yp)**2 + (z - zp)**2)
+    errors.append(d)
 
-for _, row in df_opt.iterrows():
-    node_id = row["主索节点编号"]
-    x_d, y_d, z_d = row["X坐标"], row["Y坐标"], row["Z坐标"]
+errors = np.array(errors)
+print("最大误差:", errors.max())
+print("最小误差:", errors.min())
+print("平均误差:", errors.mean())
+print("误差标准差:", errors.std())
 
-    # 找到基准态上端点坐标
-    match = df[df["主索节点编号"] == node_id].iloc[0]
-    x_c, y_c, z_c = match["基准态时上端点X坐标（米）"], match["基准态时上端点Y坐标（米）"], match["基准态时上端点Z坐标（米）"]
-    l_i = l[node_to_idx[node_id]]  # 下拉索原始长度
+# 导出优化后结果
+adjust_node_ids = [df.iloc[int(coords[idx][3])]["主索节点编号"] for idx in adjust_indices]
+df_result = pd.DataFrame(X_opt[adjust_indices], columns=["X坐标", "Y坐标", "Z坐标"])
+df_result["主索节点编号"] = adjust_node_ids
+df_result["误差"] = errors
+df_result.to_excel("优化后的主索节点坐标与误差.xlsx", index=False)
 
-    down_coord = np.array([[x_d, y_d, z_d, 1]]).T
-    px, py, pz = down_coord[:3, 0]
+# 误差可视化
+import matplotlib.pyplot as plt
 
-    up_coord = np.array([[x_c, y_c, z_c, 1]]).T
-    up_coord = R0 @ up_coord
-    cx, cy, cz = up_coord[:3, 0]
+plt.figure(figsize=(8, 5))
+plt.hist(errors, bins=30, edgecolor='black', color='lightblue')
+plt.xlabel('误差 (m)')
+plt.ylabel('节点数')
+plt.title('优化后主索节点误差分布')
+plt.grid(True)
+plt.show()
 
-    A = cx**2 + cy**2 + cz**2
-    B = cx*px + cy*py + cz*pz
-    C = px**2 + py**2 + pz**2
-
-    # 解二次方程 Aλ² - 2Bλ + (C - l²) = 0
-    a = A
-    b = -2 * B
-    c = C - l_i**2
-    delta = b**2 - 4*a*c
-
-    if delta < 0:
-        print(f"节点 {node_id} 无实数解，跳过")
-        continue
-
-    sqrt_delta = np.sqrt(delta)
-    lambda1 = (-b + sqrt_delta) / (2*a)
-    lambda2 = (-b - sqrt_delta) / (2*a)
-
-    # 选择离1最近的 λ（物理含义：尽量小的伸缩）
-    lam = lambda1 if abs(lambda1 - 1) < abs(lambda2 - 1) else lambda2
-    D_i = np.sqrt(A)
-    delta_i = D_i * (1 - lam)
-
-    # 反解上端点坐标
-    xd_up, yd_up, zd_up = lam * cx, lam * cy, lam * cz
-
-    result.append({
-        "主索节点编号": node_id,
-        "反解上端点X": xd_up,
-        "反解上端点Y": yd_up,
-        "反解上端点Z": zd_up,
-        "促动器伸缩量(米)": delta_i
-    })
-
-# 导出
-df_reverse = pd.DataFrame(result)
-df_output = pd.merge(df_opt, df_reverse, on="主索节点编号")
-df_output.to_excel("反解上端点与促动器伸缩量.xlsx", index=False)
-print("反解完成，结果保存为：反解上端点与促动器伸缩量.xlsx")
