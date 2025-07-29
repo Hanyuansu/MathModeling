@@ -1,263 +1,212 @@
 import pandas as pd
 import numpy as np
+from scipy.optimize import least_squares
+from tqdm import tqdm
 import math
+import numpy as np
+import matplotlib.pyplot as plt
+plt.rcParams['font.family'] = 'SimHei'
+plt.rcParams['axes.unicode_minus'] = False
 
-#1.构建旋转矩阵,最后一列用于记录编号
+R = 300.4           # 球面半径
+r0 = 150            # 接收面口径半径
+delta = 0.5         # 接收面 ±0.5 米容差
+theta_deg = np.linspace(0.01, 30, 10000)
+theta_rad = np.radians(theta_deg)
+
+# 计算 x_E 与 r(θ)
+x_E = (R / (2 * np.cos(theta_rad)) - (1 - 0.466) * R) * np.tan(2 * theta_rad)
+r = R * np.sin(theta_rad)
+
+# 找出满足 |x_E| <= 0.5 的解
+valid_mask = np.abs(x_E) <= delta
+valid_indices = np.where(valid_mask)[0]
+
+# 自动识别分段（两个非连续区间）
+split_idx = np.where(np.diff(valid_indices) > 1)[0]
+
+
+# 分离为两个索引区间
+idx1 = valid_indices[:split_idx[0]+1]   # 小圆
+idx2 = valid_indices[split_idx[0]+1:]   # 圆环
+r1 = np.max(r[idx1])           # 小圆区域的最大极径
+r2 = np.min(r[idx2])           # 圆环最小
+r3 = np.max(r[idx2])           # 圆环最大
+
+#面积与接收比计算
+Sp = np.pi * r1**2 + np.pi * (r3**2 - r2**2)
+eta_basic = Sp / (np.pi * r0**2) * 100
+
+print(f"有效角度范围 θ: {theta_deg[idx1[0]]:.4f}° -- {theta_deg[idx2[-1]]:.4f}°")
+print(f"r1 = {r1:.4f} m, r2 = {r2:.4f} m, r3 = {r3:.4f} m")
+print(f"接收面积 Sp = {Sp:.4f} m²")
+print(f"基准球面接收比 η_basic = {eta_basic:.4f}%")
+
+plt.figure(figsize=(14, 6))
+
+# --- 图 1: x_E vs θ
+plt.subplot(1, 2, 1)
+plt.plot(theta_deg, x_E, label='$x_E$', color='blue')
+plt.axhline(y=0.5, color='red', linestyle='--', label=r'$x_E = \pm 0.5$ m')
+plt.axhline(y=-0.5, color='red', linestyle='--')
+plt.fill_between(theta_deg[idx1], x_E[idx1], color='blue', alpha=0.3, label='小圆接收区')
+plt.fill_between(theta_deg[idx2], x_E[idx2], color='orange', alpha=0.3, label='圆环接收区')
+plt.xlabel('入射角 θ (°)')
+plt.ylabel('横向偏移 $x_E$ (m)')
+plt.title('投影偏移 $x_E$ 与 θ 的关系')
+plt.grid(True)
+plt.legend()
+
+# --- 图 2: x_E vs r ---
+plt.subplot(1, 2, 2)
+plt.plot(r, x_E, label='$x_E$ vs $r$', color='green')
+plt.axhline(y=0.5, color='red', linestyle='--', label=r'$x_E = \pm 0.5$ m')
+plt.axhline(y=-0.5, color='red', linestyle='--')
+# 填充两个有效区间
+plt.fill_between(r[idx1], x_E[idx1], color='blue', alpha=0.3, label='小圆接收区')
+plt.fill_between(r[idx2], x_E[idx2], color='orange', alpha=0.3, label='圆环接收区')
+plt.xlabel('极径 $r$ (m)')
+plt.ylabel('投影偏移 $x_E$ (m)')
+plt.title('投影偏移 $x_E$ 与极径 $r$ 的关系')
+plt.grid(True)
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+
+
+
+# === 参数定义 ===
+R = 300.4                               # 球面半径
+f_ratio = 0.466
+f = f_ratio * R + 0.39                  # 焦距
+h = 0.534 * R                           # 馈源舱高度
+CP_unit = np.array([0,0,-1])  # 单位方向向量（从 C 指向 P）              # |CP|
+N = 100                                 # 每个面片采样点数
+accept_radius_squared = 0.5 ** 2
+
 a=np.radians(36.795)
 b=np.radians(90-78.169)
 Rz = np.array([
-    [ math.cos(a), math.sin(a), 0, 0],
-    [-math.sin(a), math.cos(a), 0, 0],
-    [ 0          , 0          , 1, 0],
-    [ 0,           0          , 0, 1]
+    [ math.cos(a), math.sin(a), 0,],
+    [-math.sin(a), math.cos(a), 0,],
+    [ 0          , 0          , 1,]
 ])
 Ry = np.array([
-    [ math.cos(b), 0, -math.sin(b), 0],
-    [ 0,           1,  0,           0],
-    [ math.sin(b), 0,  math.cos(b), 0],
-    [ 0,           0,  0,           1]
+    [ math.cos(b), 0, -math.sin(b),],
+    [ 0,           1,            0,],
+    [ math.sin(b), 0,  math.cos(b),],
 ])
 R0=Ry@Rz
-#print(R0)
+CP_unit=R0@CP_unit.T
+P = CP_unit * h
 
-#2.求天体坐标系下的顶点坐标
-A=np.array([[0,0,-300.79,1]]).T #大地坐标系下的顶点坐标
-A=np.linalg.inv(R0)@A
-X=round(A[0][0],4)
-Y=round(A[1][0],4)
-Z=round(A[2][0],4)
-df = pd.DataFrame([[X, Y, Z]], columns=['X坐标（米）', 'Y坐标（米）', 'Z坐标（米）'])
-with pd.ExcelWriter('附件4.xlsx', mode='a', engine='openpyxl', if_sheet_exists='overlay') as writer:
-    df.to_excel(writer, sheet_name='理想抛物面顶点坐标', index=False, header=False,startrow=1)
-#print(A)
+# === 数据读取 ===
+df_nodes = pd.read_excel("应调整主索节点列表.xlsx")
+df_reflector = pd.read_excel("附件3.xlsx", usecols=["主索节点1", "主索节点2", "主索节点3"])
 
-#3.计算应调整的索网节点
-R=300.4 #半径
-f=0.466*R+0.39 #焦距
-r=150.0
-p=4*f
-#读坐标
-df=pd.read_excel("merged.xlsx")
-x = df['X坐标（米）'].values
-y = df['Y坐标（米）'].values
-z = df['Z坐标（米）'].values
-index=np.arange(0,2226)
-coords = np.column_stack((x, y, z,index)).T
-#print(coords)
+# === 构建主索节点坐标字典 ===
+coord_dict = {}
+for _, row in df_nodes.iterrows():
+    node_id = row["主索节点编号"]
+    coord = np.array([row["X坐标（米）"], row["Y坐标（米）"], row["Z坐标（米）"]])
+    coord_dict[node_id] = coord
 
-#旋转
-coords=R0@coords #天体坐标系下的主索节点坐标
-coords=coords.T
-#print(coords)
+df_faces = df_reflector[
+    df_reflector["主索节点1"].isin(coord_dict) &
+    df_reflector["主索节点2"].isin(coord_dict) &
+    df_reflector["主索节点3"].isin(coord_dict)
+].reset_index(drop=True)
 
-#筛选应该调整的主索节点
-def is_valid(coord):
-    x,y,z,index=coord
-    return (np.square(x)+np.square(y))*(np.square(r*r/p-R-0.39)+np.square(r)) <= np.square(R*r)
-# 保留满足条件的坐标
-# adjust_coords=[coord for coord in coords if is_valid(coord)]
-# # 提取原始 DataFrame 的行号
-# row_indices = [int(coord[3]) for coord in adjust_coords]
-# # 根据行号查找对应主索节点编号
-# adjust_ids = df.iloc[row_indices]["主索节点编号"].values
-# adjust_coords = np.array(adjust_coords)
-# # print("符合条件的节点个数:", adjust_coords.shape[0])
-# # print("对应主索节点编号:", adjust_ids)
-# m=adjust_coords.shape[0]
+# === 反解球心 ===
+def solve_sphere_center(P1, P2, P3, R):
+    def residuals(C):
+        return [np.linalg.norm(C - P1) - R,
+                np.linalg.norm(C - P2) - R,
+                np.linalg.norm(C - P3) - R]
+    C0 = np.array([0.0, 0.0, 0.0])
+    result1 = least_squares(residuals, C0)
+    C1 = result1.x
+    mirror = C0 + 2 * (C0 - C1)
+    result2 = least_squares(residuals, mirror)
+    C2 = result2.x
+    return C1 if np.linalg.norm(C1) < np.linalg.norm(C2) else C2
 
-#4.构造邻接矩阵
-df1 = pd.read_excel("附件3.xlsx", usecols=["主索节点1", "主索节点2", "主索节点3"])
-# 去重排序
-nodes = sorted(set(df1["主索节点1"]) | set(df1["主索节点2"]) | set(df1["主索节点3"]))
-node_to_idx = {node: idx for idx, node in enumerate(nodes)}
-n = len(nodes)
-adj_matrix = np.zeros((n, n), dtype=int)
-for _, row in df1.iterrows():
-    a, b, c = row["主索节点1"], row["主索节点2"], row["主索节点3"]
-    idxs = [node_to_idx[a], node_to_idx[b], node_to_idx[c]]
-    for i in range(3):
-        for j in range(i + 1, 3):
-            adj_matrix[idxs[i]][idxs[j]] = 1
-            adj_matrix[idxs[j]][idxs[i]] = 1
-adj_df = pd.DataFrame(adj_matrix, index=nodes, columns=nodes)
-#print(adj_df.head())
+#点在平面投影三角形内判断（重心坐标法）
+def is_inside_triangle(p, a, b, c):
+    v0, v1, v2 = c - a, b - a, p - a
+    dot00, dot01, dot02 = np.dot(v0, v0), np.dot(v0, v1), np.dot(v0, v2)
+    dot11, dot12 = np.dot(v1, v1), np.dot(v1, v2)
+    inv_denom = 1 / (dot00 * dot11 - dot01 * dot01)
+    u = (dot11 * dot02 - dot01 * dot12) * inv_denom
+    v = (dot00 * dot12 - dot01 * dot02) * inv_denom
+    return (u >= 0) and (v >= 0) and (u + v <= 1)
 
-#5.计算下拉索长度
-# adjust_coords是需要调整的主索节点
-# node_to_idx是主索节点到邻接矩阵编号的映射
-l=np.zeros(n,dtype=float)
-for _, row in df.iterrows():
-    i=node_to_idx[row['主索节点编号']] #对应到排序中的位置
-    x=row['X坐标（米）']
-    y=row['Y坐标（米）']
-    z=row['Z坐标（米）']
-    xc=row['基准态时上端点X坐标（米）']
-    yc=row['基准态时上端点Y坐标（米）']
-    zc=row['基准态时上端点Z坐标（米）']
-    l[i]=np.sqrt((x-xc)**2+(y-yc)**2+(z-zc)**2)
-# print(l)
+total_Sw = 0
+weighted_sum = 0
+eta_list = []
 
-##验证一下
-# L=[]
-# for adjust_coord in adjust_coords:
-#     x,y,z,index=adjust_coord
-#     row_indices = int(index)
-#     row=df.iloc[row_indices]
-#     i=node_to_idx[row['主索节点编号']]
-#     xc=row['基准态时上端点X坐标（米）']
-#     yc=row['基准态时上端点Y坐标（米）']
-#     zc=row['基准态时上端点Z坐标（米）']
-#     coord=np.array([[xc,yc,zc,1]]).T
-#     coord=(R0@coord)
-#     xc,yc,zc,index=coord
-#     if(abs(np.sqrt((x-xc)**2+(y-yc)**2+(z-zc)**2))-l[i]<=0.0001):
-#         L.append(1)
-# print(len(L))
+for _, row in tqdm(df_faces.iterrows(), total=len(df_faces)):
+    id1, id2, id3 = row["主索节点1"], row["主索节点2"], row["主索节点3"]
+    A, B, C = coord_dict[id1], coord_dict[id2], coord_dict[id3]
 
-#6.根据主索节点坐标计算径向到理想抛物面的坐标
-def project_to_paraboloid(xp, yp, zp, p):
-    r2 = xp**2 + yp**2
-    #xp^2+yp^2==0
-    if r2 < 1e-10:
-        return 0.0, 0.0, -300.79
-    a = zp / np.sqrt(r2)
-    #xp^2==0
-    if abs(xp) < 1e-10:
-        z_p = p * a ** 2 + a * np.sqrt(p ** 2 * a ** 2 + 2 * p * (R + 0.39))
-        x_p = 0.0
-        y_p = np.copysign(np.sqrt(2 * p * (z_p + R +0.39)), yp)
-    else:
-        b = yp / xp
-        z_p = p * a ** 2 + a * np.sqrt(p ** 2 * a ** 2 + 2 * p * (R + 0.39))
-        x_sq = 2 * p * (z_p + (R + 0.39)) / (1 + b ** 2)
-        x_p = np.copysign(np.sqrt(max(x_sq, 0.0)), xp)
-        y_p = b * x_p
-    return x_p, y_p, z_p
+    # 反解球心
+    center = solve_sphere_center(A, B, C, R)
 
-adjust_coords = []
-adjust_indices = []
-for i, coord in enumerate(coords):
-    if is_valid(coord):
-        adjust_coords.append(coord)
-        adjust_indices.append(i)
+    # 入射方向 u
+    u = np.array([0, 0, -1])
 
-x0 = coords[adjust_indices, :3].reshape(-1)
+    # CP向量 = P - center
+    CP = P - center
+    CU = -u
+    cos_theta = np.dot(CP, CU) / (np.linalg.norm(CP) * np.linalg.norm(CU))
+    CF_len = R / (2 * cos_theta)
+    F = center + CF_len * u
+    reflect_dir = F - P
+    reflect_dir /= np.linalg.norm(reflect_dir)
 
-# 目标函数
-def objective(X):
-    X_mat = coords[:, :3].copy()
-    X_mat[adjust_indices] = X.reshape(-1, 3)
-    total = 0
-    for idx in adjust_indices:
-        x, y, z = X_mat[idx]
-        xp, yp, zp = project_to_paraboloid(x, y, z, p / 2)
-        total += 1e6*((x - xp)**2 + (y - yp)**2 + (z - zp)**2)
-    return total
+    # 反射线参数形式 UF: x = lt + x0...
+    # 跟入射方向垂直的平面方程: xp*x + yp*y + zp*z = |CP|^2
+    xp, yp, zp = CP
+    RHS = np.dot(CP, CP)
 
-# 下拉索长度约束
-def stretch_constraint(X):
-    X_mat = X.reshape(-1, 3)
-    constraints = []
-    for idx, adj_coord in enumerate(adjust_coords):
-        x, y, z = X_mat[idx]
-        row_idx = int(adj_coord[3])
-        row = df.iloc[row_idx]
-        up_coord = np.array([[
-            row['基准态时上端点X坐标（米）'],
-            row['基准态时上端点Y坐标（米）'],
-            row['基准态时上端点Z坐标（米）'], 1
-        ]]).T
-        up_coord = R0 @ up_coord
-        xc, yc, zc = up_coord[:3, 0]
-        D = np.sqrt(xc**2 + yc**2 + zc**2)
+    count_in = 0
+    for _ in range(N):
+        # t = np.random.rand(3)
+        # t /= np.sum(t)
+        # M = t[0] * A + t[1] * B + t[2] * C  # 三角形内采样点
+        t = np.random.rand(3)
+        t /= np.sum(t)
+        M_flat = t[0] * A + t[1] * B + t[2] * C
+        vec = M_flat - center
+        vec /= np.linalg.norm(vec)
+        M = center + R * vec  # 球面上点
 
-        l_current = np.sqrt((x - xc)**2 + (y - yc)**2 + (z - zc)**2)
+        # 反射方向 = F - M
+        D = F - M
+        D /= np.linalg.norm(D)
 
-        xs, ys, zs = (D - 0.6) / D * np.array([xc, yc, zc])
-        xx, yx, zx = (D + 0.6) / D * np.array([xc, yc, zc])
+        # 求交点 Q = M + λD
+        numerator = RHS - np.dot([xp, yp, zp], M)
+        denominator = np.dot([xp, yp, zp], D)
+        if np.abs(denominator) < 1e-6:
+            continue
+        lam = numerator / denominator
+        Q = M + lam * D
 
-        l_min = np.sqrt((xs - x)**2 + (ys - y)**2 + (zs - z)**2)
-        l_max = np.sqrt((xx - x)**2 + (yx - y)**2 + (zx - z)**2)
+        # 判断是否落在 ABC 投影内（三点在同一平面）
+        if is_inside_triangle(Q, A, B, C):
+            count_in += 1
 
-        constraints.append(l_current - l_min)
-        constraints.append(l_max - l_current)
+    Swp = count_in / N
+    eta = Swp
+    total_Sw += Swp
+    eta_list.append(eta)
 
-    return np.array(constraints)
-
-# 反射面板边长约束
-edge_list = []
-for i in range(n):
-    for j in range(i+1, n):
-        if adj_matrix[i, j] == 1:
-            edge_list.append((i, j))
-edge_list = np.array(edge_list)
-
-# 原始边长
-e0 = [np.linalg.norm(coords[i, :3] - coords[j, :3]) for i, j in edge_list]
-
-def edge_constraint(X):
-    X_mat = coords[:, :3].copy()
-    X_mat[adjust_indices] = X.reshape(-1, 3)
-    constraints = []
-    for idx, (i, j) in enumerate(edge_list):
-        e_new = np.linalg.norm(X_mat[i] - X_mat[j])
-        rel_err = abs(e_new - e0[idx]) / e0[idx]
-        constraints.append(0.0007 - rel_err)
-    return np.array(constraints)
-
-# 数值梯度函数（更快）
-def numerical_gradient(func, X, eps=1e-4):
-    grad = np.zeros_like(X)
-    for i in range(len(X)):
-        X1, X2 = X.copy(), X.copy()
-        X1[i] += eps
-        X2[i] -= eps
-        grad[i] = (func(X1) - func(X2)) / (2 * eps)
-    return grad
-from scipy.optimize import minimize
-# 优化
-res = minimize(
-    objective, x0, method='trust-constr',
-    jac=lambda X: numerical_gradient(objective, X),
-    constraints=[
-        {'type': 'ineq', 'fun': stretch_constraint},
-        {'type': 'ineq', 'fun': edge_constraint}
-    ],
-    options={'verbose': 3, 'maxiter': 500}
-)
-
-X_opt = coords[:, :3].copy()
-X_opt[adjust_indices] = res.x.reshape(-1, 3)
-
-# 计算误差
-errors = []
-for idx in adjust_indices:
-    x, y, z = X_opt[idx]
-    xp, yp, zp = project_to_paraboloid(x, y, z, p/2)
-    d = np.sqrt((x - xp)**2 + (y - yp)**2 + (z - zp)**2)
-    errors.append(d)
-
-errors = np.array(errors)
-print("最大误差:", errors.max())
-print("最小误差:", errors.min())
-print("平均误差:", errors.mean())
-print("误差标准差:", errors.std())
-
-# 导出优化后结果
-adjust_node_ids = [df.iloc[int(coords[idx][3])]["主索节点编号"] for idx in adjust_indices]
-df_result = pd.DataFrame(X_opt[adjust_indices], columns=["X坐标", "Y坐标", "Z坐标"])
-df_result["主索节点编号"] = adjust_node_ids
-df_result["误差"] = errors
-df_result.to_excel("优化后的主索节点坐标与误差.xlsx", index=False)
-
-# 误差可视化
-import matplotlib.pyplot as plt
-
-plt.figure(figsize=(8, 5))
-plt.hist(errors, bins=30, edgecolor='black', color='lightblue')
-plt.xlabel('误差 (m)')
-plt.ylabel('节点数')
-plt.title('优化后主索节点误差分布')
-plt.grid(True)
-plt.show()
+# === 最终接收比 ===
+eta_array = np.array(eta_list)
+w = eta_array / np.sum(eta_array)
+total_eta = np.sum(w * eta_array)
+print("总接收比 η ≈ {:.6f}".format(total_eta))
 

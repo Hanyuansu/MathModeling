@@ -1,82 +1,70 @@
-import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+plt.rcParams['font.family'] = 'SimHei'
+plt.rcParams['axes.unicode_minus'] = False
 
-# 读取数据
-df_opt = pd.read_excel("优化后的主索节点坐标与误差.xlsx")  # 优化后的主索节点坐标
-df_base = pd.read_excel("merged.xlsx")  # 基准态主索节点与上端点坐标
+R = 300.4           # 球面半径
+r0 = 150            # 接收面口径半径
+delta = 0.5         # 接收面 ±0.5 米容差
+theta_deg = np.linspace(0.01, 30, 10000)
+theta_rad = np.radians(theta_deg)
 
-# 构建 node_to_idx 和拉索长度 l
-df1 = pd.read_excel("附件3.xlsx", usecols=["主索节点1", "主索节点2", "主索节点3"])
-nodes = sorted(set(df1["主索节点1"]) | set(df1["主索节点2"]) | set(df1["主索节点3"]))
-node_to_idx = {node: idx for idx, node in enumerate(nodes)}
+# 计算 x_E 与 r(θ)
+x_E = (R / (2 * np.cos(theta_rad)) - (1 - 0.466) * R) * np.tan(2 * theta_rad)
+r = R * np.sin(theta_rad)
 
-# 初始化拉索长度数组
-l = np.zeros(len(nodes))
-for _, row in df_base.iterrows():
-    idx = node_to_idx[row['主索节点编号']]
-    x, y, z = row['X坐标（米）'], row['Y坐标（米）'], row['Z坐标（米）']
-    xc, yc, zc = row['基准态时上端点X坐标（米）'], row['基准态时上端点Y坐标（米）'], row['基准态时上端点Z坐标（米）']
-    l[idx] = np.sqrt((x - xc)**2 + (y - yc)**2 + (z - zc)**2)
+# 找出满足 |x_E| <= 0.5 的解
+valid_mask = np.abs(x_E) <= delta
+valid_indices = np.where(valid_mask)[0]
 
-# 反解促动器上端点
-results = []
-for _, row in df_opt.iterrows():
-    node_id = row['主索节点编号']
-    if node_id not in node_to_idx:
-        continue
+# 自动识别分段（两个非连续区间）
+split_idx = np.where(np.diff(valid_indices) > 1)[0]
 
-    idx = node_to_idx[node_id]
-    li = l[idx]
 
-    x, y, z = row['X坐标'], row['Y坐标'], row['Z坐标']
+# 分离为两个索引区间
+idx1 = valid_indices[:split_idx[0]+1]   # 小圆
+idx2 = valid_indices[split_idx[0]+1:]   # 圆环
+r1 = np.max(r[idx1])           # 小圆区域的最大极径
+r2 = np.min(r[idx2])           # 圆环最小
+r3 = np.max(r[idx2])           # 圆环最大
 
-    # 查找对应基准态上端点
-    row_base = df_base[df_base['主索节点编号'] == node_id]
-    if row_base.empty:
-        continue
+#面积与接收比计算
+Sp = np.pi * r1**2 + np.pi * (r3**2 - r2**2)
+eta_basic = Sp / (np.pi * r0**2) * 100
 
-    x0 = row_base['基准态时上端点X坐标（米）'].values[0]
-    y0 = row_base['基准态时上端点Y坐标（米）'].values[0]
-    z0 = row_base['基准态时上端点Z坐标（米）'].values[0]
+print(f"有效角度范围 θ: {theta_deg[idx1[0]]:.4f}° -- {theta_deg[idx2[-1]]:.4f}°")
+print(f"r1 = {r1:.4f} m, r2 = {r2:.4f} m, r3 = {r3:.4f} m")
+print(f"接收面积 Sp = {Sp:.4f} m²")
+print(f"基准球面接收比 η_basic = {eta_basic:.4f}%")
 
-    # 单位方向向量（从球心指向基准态上端点）
-    norm = np.sqrt(x0**2 + y0**2 + z0**2)
-    ux, uy, uz = x0 / norm, y0 / norm, z0 / norm
+plt.figure(figsize=(14, 6))
 
-    # 构造一元二次方程：a λ^2 + b λ + c = 0
-    dx, dy, dz = x - x0, y - y0, z - z0
+# --- 图 1: x_E vs θ
+plt.subplot(1, 2, 1)
+plt.plot(theta_deg, x_E, label='$x_E$', color='blue')
+plt.axhline(y=0.5, color='red', linestyle='--', label=r'$x_E = \pm 0.5$ m')
+plt.axhline(y=-0.5, color='red', linestyle='--')
+plt.fill_between(theta_deg[idx1], x_E[idx1], color='blue', alpha=0.3, label='小圆接收区')
+plt.fill_between(theta_deg[idx2], x_E[idx2], color='orange', alpha=0.3, label='圆环接收区')
+plt.xlabel('入射角 θ (°)')
+plt.ylabel('横向偏移 $x_E$ (m)')
+plt.title('投影偏移 $x_E$ 与 θ 的关系')
+plt.grid(True)
+plt.legend()
 
-    a = 1  # 单位向量模长为1
-    b = -2 * (dx * ux + dy * uy + dz * uz)
-    c = dx**2 + dy**2 + dz**2 - li**2
+# --- 图 2: x_E vs r ---
+plt.subplot(1, 2, 2)
+plt.plot(r, x_E, label='$x_E$ vs $r$', color='green')
+plt.axhline(y=0.5, color='red', linestyle='--', label=r'$x_E = \pm 0.5$ m')
+plt.axhline(y=-0.5, color='red', linestyle='--')
+# 填充两个有效区间
+plt.fill_between(r[idx1], x_E[idx1], color='blue', alpha=0.3, label='小圆接收区')
+plt.fill_between(r[idx2], x_E[idx2], color='orange', alpha=0.3, label='圆环接收区')
+plt.xlabel('极径 $r$ (m)')
+plt.ylabel('投影偏移 $x_E$ (m)')
+plt.title('投影偏移 $x_E$ 与极径 $r$ 的关系')
+plt.grid(True)
+plt.legend()
 
-    Δ = b**2 - 4 * a * c
-    if Δ < 0:
-        continue  # 无解跳过
-
-    λ1 = (-b + np.sqrt(Δ)) / (2 * a)
-    λ2 = (-b - np.sqrt(Δ)) / (2 * a)
-    λ = max(λ1, λ2)
-
-    # 解得上端点新位置
-    xc = x0 + λ * ux
-    yc = y0 + λ * uy
-    zc = z0 + λ * uz
-
-    l_base = np.sqrt((x - x0)**2 + (y - y0)**2 + (z - z0)**2)
-    l_new = np.sqrt((x - xc)**2 + (y - yc)**2 + (z - zc)**2)
-    delta = l_new - l_base
-
-    results.append([
-        node_id, x, y, z,
-        xc, yc, zc,
-        li, l_base, l_new, delta
-    ])
-
-# 保存结果
-df_result = pd.DataFrame(results, columns=[
-    "主索节点编号", "主索X", "主索Y", "主索Z",
-    "上端点X", "上端点Y", "上端点Z",
-    "目标长度", "原始长度", "当前长度", "伸缩量"
-])
-df_result.to_excel("反解_促动器上端点坐标_及伸缩量.xlsx", index=False)
+plt.tight_layout()
+plt.show()

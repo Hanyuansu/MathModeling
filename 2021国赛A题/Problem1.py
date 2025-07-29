@@ -66,3 +66,75 @@ plt.show()
 print(f"最优 δ = {delta_min_mean:.2f} m，对应最大误差 = {min_mean_error:.2f} m")
 # z=-R-δ+x^2/4(F+δ),F=0.466R
 # x^2+y^2=561.5*(z+300.79)
+
+import pandas as pd
+import numpy as np
+import math
+
+# === 第1步：构建旋转矩阵 ===
+a = np.radians(36.795)
+b = np.radians(90 - 78.169)
+Rz = np.array([
+    [math.cos(a), math.sin(a), 0, 0],
+    [-math.sin(a), math.cos(a), 0, 0],
+    [0, 0, 1, 0],
+    [0, 0, 0, 1]
+])
+Ry = np.array([
+    [math.cos(b), 0, -math.sin(b), 0],
+    [0, 1, 0, 0],
+    [math.sin(b), 0, math.cos(b), 0],
+    [0, 0, 0, 1]
+])
+R0 = Ry @ Rz
+
+# === 第2步：转换馈源舱顶点坐标 ===
+A = np.array([[0, 0, -300.79, 1]]).T
+A = np.linalg.inv(R0) @ A  # 转换到天体坐标系
+X, Y, Z = round(A[0][0], 4), round(A[1][0], 4), round(A[2][0], 4)
+
+# === 第3步：参数定义 ===
+R = 300.4
+f = 0.466 * R + 0.39
+r = 150.0
+p = 4 * f
+
+# === 第4步：读取主索节点坐标 ===
+df = pd.read_excel("merged.xlsx")
+x = df['X坐标（米）'].values
+y = df['Y坐标（米）'].values
+z = df['Z坐标（米）'].values
+index = np.arange(0, len(x))
+coords = np.column_stack((x, y, z, index)).T
+#
+# # === 第5步：旋转到天体坐标系 ===
+coords = R0 @ coords
+coords = coords.T
+
+# === 第6步：筛选应调整主索节点 ===
+def is_valid(coord):
+    x, y, z, index = coord
+    return (x**2 + y**2) * ((r*r/p - R - 0.39)**2 + r**2) <= (R * r)**2
+
+adjust_coords = []
+adjust_indices = []
+
+for i, coord in enumerate(coords):
+    if is_valid(coord):
+        adjust_coords.append(coord)
+        adjust_indices.append(i)
+
+# === 第7步：输出结果 ===
+adjust_coords = np.array(adjust_coords)
+adjust_indices = np.array(adjust_indices)
+
+
+# 转换为 DataFrame
+df_result = pd.DataFrame(adjust_coords[:,:3], columns=["X坐标（米）", "Y坐标（米）", "Z坐标（米）"])
+
+# 可选：关联回主索编号
+df_origin = pd.read_excel("merged.xlsx")
+df_result["主索节点编号"] = df_origin.loc[adjust_indices, "主索节点编号"].values
+
+# 保存到 Excel
+df_result.to_excel("调整前(天体).xlsx", index=False)
