@@ -212,7 +212,7 @@ res = minimize(
         {'type': 'ineq', 'fun': stretch_constraint},
         {'type': 'ineq', 'fun': edge_constraint}
     ],
-    options={'verbose': 3, 'maxiter': 1}
+    options={'verbose': 3, 'maxiter': 10}
 )
 
 X_opt = coords[:, :3].copy()
@@ -237,7 +237,7 @@ adjust_node_ids = [df.iloc[int(coords[idx][3])]["主索节点编号"] for idx in
 df_result = pd.DataFrame(X_opt[adjust_indices], columns=["X坐标（米）", "Y坐标（米）", "Z坐标（米）"])
 df_result["主索节点编号"] = adjust_node_ids
 df_result["误差"] = errors
-df_result.to_excel("优化后的主索节点坐标与误差.xlsx", index=False)
+df_opt=df_result
 
 # 误差可视化
 import matplotlib.pyplot as plt
@@ -250,7 +250,7 @@ plt.title('优化后主索节点误差分布')
 plt.grid(True)
 plt.show()
 
-df_opt = pd.read_excel("优化后的主索节点坐标与误差.xlsx")
+
 result1=[]
 for _, row in df_opt.iterrows():
     node_id = row["主索节点编号"]
@@ -305,8 +305,6 @@ for _, row in df_opt.iterrows():
     D_i = np.sqrt(A)
     delta_i = D_i * (1 - lam)
 
-    # 反解上端点坐标
-    xd_up, yd_up, zd_up = lam * cx, lam * cy, lam * cz
 
     result2.append({
         "对应主索节点编号": node_id,
