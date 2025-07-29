@@ -212,7 +212,7 @@ res = minimize(
         {'type': 'ineq', 'fun': stretch_constraint},
         {'type': 'ineq', 'fun': edge_constraint}
     ],
-    options={'verbose': 3, 'maxiter': 100}
+    options={'verbose': 3, 'maxiter': 1}
 )
 
 X_opt = coords[:, :3].copy()
