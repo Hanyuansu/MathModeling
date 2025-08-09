@@ -103,7 +103,7 @@ CP_unit=R0@CP_unit.T
 P = CP_unit * h
 
 # === 数据读取 ===
-df_nodes = pd.read_excel("应调整主索节点列表.xlsx")
+df_nodes = pd.read_excel("调整后(天体).xlsx")
 df_reflector = pd.read_excel("附件3.xlsx", usecols=["主索节点1", "主索节点2", "主索节点3"])
 
 # === 构建主索节点坐标字典 ===
