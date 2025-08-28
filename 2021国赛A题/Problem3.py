@@ -3,7 +3,6 @@ import numpy as np
 from scipy.optimize import least_squares
 from tqdm import tqdm
 import math
-import numpy as np
 import matplotlib.pyplot as plt
 plt.rcParams['font.family'] = 'SimHei'
 plt.rcParams['axes.unicode_minus'] = False
