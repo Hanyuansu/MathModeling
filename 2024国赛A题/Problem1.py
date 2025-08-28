@@ -155,13 +155,13 @@ def handles_at_time(t: float) -> Tuple[np.ndarray, np.ndarray, List[str]]:
         th_cur = th_f
 
     # —— 按你当前定义仅重算尾部（不改动你的设定：1.65） ——
-    # 现在 th_cur 是“第221节 前把手”的 θ
+    # 现在 th_cur 是“第221节 前把手”
     rh_221_back, th_221_back = step_same_board(th_cur, l_BODY)    # 221 前 -> 221 后
     xs.append(rh_221_back * math.cos(th_221_back))
     ys.append(rh_221_back * math.sin(th_221_back))
     names.append("龙尾-前把手")  # 保留你当前的列头
 
-    L_221BACK_to_TAILREAR = 1.65  # 你现在的口径（我不改）
+    L_221BACK_to_TAILREAR = 1.65
     r_tail, th_tail = step_same_board(th_221_back, L_221BACK_to_TAILREAR)
     xs.append(r_tail * math.cos(th_tail))
     ys.append(r_tail * math.sin(th_tail))
