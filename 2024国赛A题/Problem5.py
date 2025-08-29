@@ -495,7 +495,6 @@ def speeds_at_time(t: float, dt_v: float = DT_V) -> np.ndarray:
     sp[0] = V0  # 龙头速度强制为 V0（与 Q4 保持一致）
     return sp
 
-
 def max_speed_at_time_given_V0(V0_eval: float, t_star: float, dt_v: float = 0.05) -> Tuple[float, int]:
     """在给定 V0_eval 下，计算 t=t_star 时刻“列最大速度”及对应把手索引。"""
     global V0
@@ -544,7 +543,6 @@ def bisect_V0_at_time(t_star: float = Q5_TSTAR, vlim: float = 2.0,
     return 0.5 * (V_lo + V_hi), (j_star_record if j_star_record is not None else 0)
 
 
-
 # ==============================
 # 使用示例（默认不自动运行；按需取消注释）
 # ==============================
@@ -554,4 +552,5 @@ if __name__ == "__main__":
     print(f"[二分] V0*={V0_star_bis:.6f} m/s, 瓶颈把手: {_label_of_index(j_star_b)}")
 
 
-    pass  # 默认不执行；按需取消上方注释
+
+
