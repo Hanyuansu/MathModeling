@@ -18,7 +18,7 @@ R_turn = 4.5
 
 # 龙头速度（沿路径弧长，单位：m/s）
 # 注：问题五会临时修改 V0 进行计算，之后再恢复
-V0 = 1.10
+V0 = 1.00
 
 # 板几何（孔心距）
 L_head, L_body, D_hole = 3.41, 2.20, 0.55
@@ -463,9 +463,6 @@ def make_result4(xlsx_path: str, dt_v: float = DT_V, highlight_max: bool = True)
         print(f"[CHECK] t={tchk:>4}s  max|ΔL|={max(errs):.6e} m, mean|ΔL|={np.mean(errs):.6e} m")
 
 
-# ==============================
-# —— 问题五：工具函数（列/全局速度，直接法/二分法/全局法）
-# ==============================
 def _label_of_index(idx: int) -> str:
     """把手索引到标签（便于打印）"""
     if idx == 0: return "龙头（前把手）"
@@ -542,6 +539,85 @@ def bisect_V0_at_time(t_star: float = Q5_TSTAR, vlim: float = 2.0,
             return 0.5 * (V_lo + V_hi), j_star_record
     return 0.5 * (V_lo + V_hi), (j_star_record if j_star_record is not None else 0)
 
+# ===== 速度分布绘图（0–100s） =====
+import matplotlib.pyplot as plt
+plt.rcParams['font.family'] = 'SimHei'
+plt.rcParams['axes.unicode_minus'] = False
+
+def _compute_pos_spd_over_window(t0: float = 0.0, t1: float = 100.0, dt: float = 1.0, dt_v: float = 0.05):
+    """
+    在给定时间窗口内计算位置与速度矩阵（不写Excel）。
+    为了与第四问一致，这里复用 all_handles_at_time + speeds_over_time，
+    但会“临时”修改全局 T_START/T_END/T_GRID，再在函数结束时恢复。
+    返回：
+        t_grid: shape=(T,)
+        pos:    shape=(T, N, 2)
+        spd:    shape=(T, N)
+    """
+    global T_START, T_END, T_GRID, DT_V
+    # 备份全局
+    _bak = (T_START, T_END, T_GRID.copy(), DT_V)
+    try:
+        # 设置窗口
+        T_START, T_END = float(t0), float(t1)
+        T_GRID = np.arange(T_START, T_END + 1e-12, dt, dtype=float)
+        DT_V = dt_v  # 更平滑的数值微分
+
+        # 计算位置与速度
+        all_pos = [all_handles_at_time(t) for t in T_GRID]          # (T, N, 2)
+        pos_arr = np.stack(all_pos, axis=0)
+        spd_arr = speeds_over_time(pos_arr, dt_s=dt, dt_v=dt_v)     # (T, N)
+        return T_GRID.copy(), pos_arr, spd_arr
+    finally:
+        # 恢复全局
+        T_START, T_END, T_GRID, DT_V = _bak[0], _bak[1], _bak[2], _bak[3]
+
+def plot_speed_heatmap_0_100(dt: float = 1.0, dt_v: float = 0.05, save_path: str | None = None):
+    """
+    速度分布热力图：横轴时间（0–100s），纵轴把手索引（0..223），色值为速度大小（m/s）
+    说明：
+      - 采用 matplotlib 默认配色，不手动指定颜色；
+      - 图像 origin='lower'，这样 j=0（龙头）在下方，j 递增向上。
+    """
+    t_grid, _, spd = _compute_pos_spd_over_window(0.0, 100.0, dt=dt, dt_v=dt_v)  # (T,N)
+
+    plt.figure(figsize=(9, 5))
+    # imshow：X 方向对应时间，Y 方向对应把手索引；extent 让坐标轴显示真实范围
+    plt.imshow(spd.T, aspect='auto', origin='lower',
+               extent=[t_grid[0], t_grid[-1], 0, spd.shape[1]-1])
+    cbar = plt.colorbar()
+    cbar.set_label("速度 (m/s)")
+    plt.xlabel("时间 t (s)")
+    plt.ylabel("把手索引 j（0=龙头）")
+    plt.title("速度分布热力图（0–100 s）")
+
+    if save_path:
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=200)
+        print(f"[PLOT] 已保存速度热力图 -> {save_path}")
+    plt.show()
+
+def plot_speed_max_curve_0_100(dt: float = 1.0, dt_v: float = 0.05, vlimit: float | None = 2.0, save_path: str | None = None):
+    """
+    每一秒的“列最大速度”曲线：t↦max_j speed_j(t)
+    可选：叠加一条 2 m/s 的水平线（便于对比是否越界）。
+    """
+    t_grid, _, spd = _compute_pos_spd_over_window(0.0, 100.0, dt=dt, dt_v=dt_v)
+    vmax_t = np.max(spd, axis=1)  # shape=(T,)
+
+    plt.figure(figsize=(9, 4))
+    plt.plot(t_grid, vmax_t, linewidth=2)
+    if vlimit is not None:
+        plt.axhline(vlimit, linestyle='--')  # 默认样式，不指定颜色
+    plt.xlabel("时间 t (s)")
+    plt.ylabel("每秒最大速度 max_j v_j(t) (m/s)")
+    plt.title("每秒最大速度曲线（0–100 s）")
+
+    if save_path:
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=200)
+        print(f"[PLOT] 已保存最大速度曲线 -> {save_path}")
+    plt.show()
 
 # ==============================
 # 使用示例（默认不自动运行；按需取消注释）
@@ -551,6 +627,8 @@ if __name__ == "__main__":
     V0_star_bis, j_star_b = bisect_V0_at_time(t_star=Q5_TSTAR, vlim=2.0, V_lo=0.0, V_hi=2.5, tol=1e-6, dt_v=0.05)
     print(f"[二分] V0*={V0_star_bis:.6f} m/s, 瓶颈把手: {_label_of_index(j_star_b)}")
 
+    plot_speed_heatmap_0_100(dt=1.0, dt_v=0.05, save_path=r"D:/MathModeling/2024国赛A题/附件/热力图.png")   # 或者填一个 png 路径
+    plot_speed_max_curve_0_100(dt=1.0, dt_v=0.05, vlimit=2.0, save_path=r"D:/MathModeling/2024国赛A题/附件/每秒最大速度曲线.png")
 
 
 
