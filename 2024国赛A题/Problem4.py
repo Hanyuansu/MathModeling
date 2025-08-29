@@ -12,7 +12,7 @@ b = p / (2.0*math.pi)
 # 调头圆（问题3/4规定直径9m）
 R_turn = 4.5
 
-# 龙头速度（沿路径弧长）
+# 龙头速度（沿路径弧长）——已改为 1.12 m/s
 V0 = 1.0  # m/s
 
 # 板几何（孔心距）
@@ -24,10 +24,10 @@ l_TAIL = l_BODY            # 1.65
 # 节数：头1 + 身221 + 尾1
 N_BODY = 221
 
-# 时间网格
+# 时间网格（单位：秒）
 T_START, T_END, DT = -100, 100, 1.0
 T_GRID = np.arange(T_START, T_END+1e-12, DT, dtype=float)
-# 速度差分步长（更小误差）
+# 速度差分步长（更小误差；单位：秒）
 DT_V = 0.1
 
 # ===== 基础向量工具 =====
@@ -44,6 +44,7 @@ def ang_diff(a_to: float, a_from: float, ccw: bool) -> float:
 # ===== 螺线弧长原函数与反函数（只用于“时间↔θ”） =====
 def F_theta(theta: float) -> float:
     # F(θ) = 0.5*( θ*sqrt(1+θ^2) + asinh(θ) )
+    # 注意：等距螺线 r=bθ 的弧长 S(θ) = b * F(θ)
     return 0.5*(theta*math.sqrt(1.0+theta*theta) + math.asinh(theta))
 
 def inv_F(Fv: float, max_iter=50, tol=1e-13) -> float:
@@ -112,7 +113,7 @@ D = C1 + (R1/(R1+R2))*(C2 - C1)
 
 angD_on_C1 = angle_of(D - C1)
 phi1 = ang_diff(angD_on_C1, angB, ccw=(sgn1>0))
-L1 = R1 * phi1
+L1 = R1 * phi1  # 大弧弧长（米）
 
 angD = angle_of(D - C2)
 tan_ccw_at_F = rot90((F - C2)/np.hypot(*(F - C2)))
@@ -120,7 +121,7 @@ sgn2 = +1 if np.dot(tan_ccw_at_F, tF) > 0 else -1
 
 angF_on_C2 = angle_of(F - C2)
 phi2 = ang_diff(angF_on_C2, angD, ccw=(sgn2>0))
-L2 = R2 * phi2
+L2 = R2 * phi2  # 小弧弧长（米）
 
 # ===== 段内坐标表达（圆弧参数 φ 从起点0开始量） =====
 def xy_on_arc1(phi: float) -> np.ndarray:
@@ -166,7 +167,7 @@ def same_spiral_delta(theta1: float, l: float, *, offset: float = 0.0) -> float:
         else:          lo, gl = mid, gm
     return 0.5*(lo+hi)
 
-# ===== 头把手：t→(段, 段内参数) =====
+# ===== 头把手：t→(段, 段内参数)（关键：统一用 s=V0*t） =====
 def head_state_at_time(t: float):
     """
     返回 (seg_id, param)：
@@ -174,19 +175,28 @@ def head_state_at_time(t: float):
       seg=2: 大弧，     param=φ1 ∈ [0, L1/R1]
       seg=3: 小弧，     param=φ2 ∈ [0, L2/R2]
       seg=4: 盘出螺线，param=θ_out
-    t=0 在 B。
+    t=0 在 B；V0 为龙头沿路径的弧长速度（m/s）。
     """
-    if t <= 0.0:
-        # 从 B 沿盘入往回：F(θ) = F(θ_B) + (-t)/b
-        Fu = F_theta(theta_B) + (-t)/b
+    # 统一把时间 t（秒）映射为等效弧长 s（米）
+    s = V0 * t
+
+    if s <= 0.0:
+        # 从 B 沿盘入往回：S(θ) = b*F(θ)
+        # F(θ) = F(θ_B) + (-s)/b
+        Fu = F_theta(theta_B) + (-s)/b
         theta = inv_F(Fu)
         return 1, theta
-    if t <= L1:
-        return 2, t/R1
-    if t <= L1 + L2:
-        return 3, (t - L1)/R2
-    # 盘出
-    s_out = t - (L1 + L2)
+
+    if s <= L1:
+        # 大弧：弧长 s = R1*φ1
+        return 2, s / R1
+
+    if s <= L1 + L2:
+        # 小弧：弧长 s-L1 = R2*φ2
+        return 3, (s - L1) / R2
+
+    # 盘出：s_out = s - (L1 + L2)
+    s_out = s - (L1 + L2)
     Fu = F_theta(theta_B) + s_out/b   # u = θ - π
     u = inv_F(Fu)
     theta = u + math.pi
@@ -289,7 +299,7 @@ def all_handles_at_time(t: float) -> np.ndarray:
     P.append(xy_of(seg, par))
     return np.vstack(P)   # shape = (224, 2)
 
-# ===== 速度（小步长中心差分；龙头速度强制为1） =====
+# ===== 速度（小步长中心差分；龙头速度强制为 V0） =====
 def speeds_over_time(pos_series: np.ndarray, dt_s: float, dt_v: float = DT_V) -> np.ndarray:
     """
     pos_series: shape (T, N, 2), 按 1s 采样的坐标序列
@@ -298,11 +308,11 @@ def speeds_over_time(pos_series: np.ndarray, dt_s: float, dt_v: float = DT_V) ->
     T, N, _ = pos_series.shape
     speed = np.zeros((T, N), float)
 
-    # 用更密 dt_v 重新算邻点以求导
+    # 用更密 dt_v 重新算邻点以求导（dt_v 单位：秒）
     def pos_at(t: float) -> np.ndarray:
         return all_handles_at_time(t)
 
-    # 首末点：一侧差分
+    # 首末点：一侧差分；中间：中心差分
     for ti, t in enumerate(T_GRID):
         if t - T_START < 1e-12:           # 首点
             P2 = pos_at(t + dt_v)
@@ -315,8 +325,8 @@ def speeds_over_time(pos_series: np.ndarray, dt_s: float, dt_v: float = DT_V) ->
             P0 = pos_at(t - dt_v)
             v = (P2 - P0) / (2.0*dt_v)
         speed[ti, :] = np.hypot(v[:,0], v[:,1])
-        # 龙头速度置 1（消除数值误差）
-        speed[ti, 0] = 1.0
+        # 龙头速度置为 V0（消除数值误差）
+        speed[ti, 0] = V0
     return speed
 
 # ===== 主过程：计算并写入 result4.xlsx =====
@@ -353,6 +363,7 @@ def make_result4(xlsx_path: str):
 
     # 4) 打印若干几何与一致性检查
     print("\n[Geom]")
+    print(f"  V0={V0:.3f} m/s")  # 新增：打印龙头速度
     print(f"  theta_B={theta_B:.9f}, alpha={alpha:.9f}")
     print(f"  C1=({C1[0]:.6f},{C1[1]:.6f}), R1={R1:.6f}, phi1={phi1:.9f}, L1={L1:.6f}")
     print(f"  C2=({C2[0]:.6f},{C2[1]:.6f}), R2={R2:.6f}, phi2={phi2:.9f}, L2={L2:.6f}")
@@ -378,3 +389,7 @@ if __name__ == "__main__":
     # 改成你的模板路径
     xlsx_path = r"D:/MathModeling/2024国赛A题/附件/result4.xlsx"
     make_result4(xlsx_path)
+
+
+
+
