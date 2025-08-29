@@ -430,13 +430,13 @@ class Dragon:
         ax.annotate("D", (Dxy[0],Dxy[1]), xytext=(5,5), textcoords='offset points')
         ax.annotate("F", (Fx,Fy), xytext=(5,5), textcoords='offset points')
 
-        # 把手散点
-        xs = [p[0] for p in self.pos]; ys = [p[1] for p in self.pos]
-        ax.scatter(xs, ys, c='k', s=10, zorder=6)
-
-        ax.set_aspect('equal', 'box')
-        ax.grid(True, ls='--', alpha=0.3)
-        ax.legend(loc='best')
+        # # 把手散点
+        # xs = [p[0] for p in self.pos]; ys = [p[1] for p in self.pos]
+        # ax.scatter(xs, ys, c='k', s=10, zorder=6)
+        #
+        # ax.set_aspect('equal', 'box')
+        # ax.grid(True, ls='--', alpha=0.3)
+        # ax.legend(loc='best')
         plt.tight_layout()
         plt.show()
 
