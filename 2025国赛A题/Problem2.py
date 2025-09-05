@@ -714,12 +714,12 @@ if __name__ == "__main__":
     #     print("  ", k, ":", v)
     #
     # # 3) two_stage：先 L0 全局搜，再 L1 小规模精修（推荐）
-    # ans_2s = solve_q2(strategy="two_stage",
-    #                   dt_L0=0.01, swarm_size=64, iters=120,
-    #                   N_ANG=48, N_Z=9, INCLUDE_SIDE=True, dt_L1=0.02,
-    #                   stage2_swarm=48, stage2_iters=80)
-    # print("\n[Q2 | two_stage] 最优解：")
-    # for k, v in ans_2s.items():
-    #     print("  ", k, ":", v)
+    ans_2s = solve_q2(strategy="two_stage",
+                      dt_L0=0.01, swarm_size=64, iters=120,
+                      N_ANG=48, N_Z=9, INCLUDE_SIDE=True, dt_L1=0.02,
+                      stage2_swarm=48, stage2_iters=80)
+    print("\n[Q2 | two_stage] 最优解：")
+    for k, v in ans_2s.items():
+        print("  ", k, ":", v)
 
-    run_all_validations()
+    #run_all_validations()
