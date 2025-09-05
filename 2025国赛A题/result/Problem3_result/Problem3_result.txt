@@ -1,0 +1,31 @@
+"D:\python\python 3.12.6\python.exe" D:\MathModeling\2025国赛A题\Problem3.py 
+[Q3 | L0] 最优：
+  strategy: L0
+  theta_deg: 9.402454986412964
+  v_u_mps: 81.56620514703678
+  drops_s: [np.float64(0.0), np.float64(1.0), np.float64(44.739)]
+  taus_s: [np.float64(0.212), np.float64(0.2), np.float64(1.614)]
+  bursts: [{'t_drop': np.float64(0.0), 'tau': np.float64(0.21211254969847507), 't_burst': np.float64(0.21211254969847507), 's_burst': (17817.06877672223, 2.8264690678134947, 1799.7793155460074)}, {'t_drop': np.float64(1.0), 'tau': np.float64(0.2), 't_burst': np.float64(1.2), 's_burst': (17896.56445172996, 15.990392299737547, 1799.8038)}, {'t_drop': np.float64(44.73851440430278), 'tau': np.float64(1.613604794136405), 't_burst': np.float64(46.35211919843918), 's_burst': (21529.97248076589, 617.6571415893657, 1787.2287512827077)}]
+  cover_total_s: 6.149999999999913
+  cover_intervals_s: [(np.float64(1.202), np.float64(7.352))]
+  config: {'dt_L0': 0.01, 'dt_L1': 0.02, 'N_ANG': 48, 'N_Z': 9, 'INCLUDE_SIDE': True, 'swarm_size': 96, 'iters': 180, 'stage2_swarm': 64, 'stage2_iters': 90}
+[Q3 | L1] 最优：
+  strategy: L1
+  theta_deg: 10.153092663794324
+  v_u_mps: 87.07813930088545
+  drops_s: [np.float64(0.0), np.float64(1.0), np.float64(60.0)]
+  taus_s: [np.float64(0.2), np.float64(0.2), np.float64(7.271)]
+  bursts: [{'t_drop': np.float64(0.0), 'tau': np.float64(0.2), 't_burst': np.float64(0.2), 's_burst': (17817.14290357203, 3.070008287340306, 1799.8038)}, {'t_drop': np.float64(1.0), 'tau': np.float64(0.2), 't_burst': np.float64(1.2), 's_burst': (17902.857421432167, 18.42004972404183, 1799.8038)}]
+  cover_total_s: 6.159999999999957
+  cover_intervals_s: [(np.float64(1.2), np.float64(7.36))]
+  config: {'dt_L0': 0.01, 'dt_L1': 0.02, 'N_ANG': 48, 'N_Z': 9, 'INCLUDE_SIDE': True, 'swarm_size': 80, 'iters': 140, 'stage2_swarm': 64, 'stage2_iters': 90}
+[Q3 | two_stage] 最优：
+  strategy: two_stage
+  theta_deg: 11.517274185461746
+  v_u_mps: 80.46289557145387
+  drops_s: [np.float64(0.0), np.float64(1.0), np.float64(50.014)]
+  taus_s: [np.float64(0.2), np.float64(0.2), np.float64(1.977)]
+  bursts: [{'t_drop': np.float64(0.0), 'tau': np.float64(0.2), 't_burst': np.float64(0.2), 's_burst': (17815.76854783023, 3.2130984851691475, 1799.8038)}, {'t_drop': np.float64(1.0), 'tau': np.float64(0.2), 't_burst': np.float64(1.2), 's_burst': (17894.611286981388, 19.278590911014884, 1799.8038)}, {'t_drop': np.float64(50.013643287712384), 'tau': np.float64(1.9774964037677227), 't_burst': np.float64(51.99113969148011), 's_burst': (21899.123864866862, 835.2632609245612, 1780.8190366079855)}]
+  cover_total_s: 6.159999999999957
+  cover_intervals_s: [(np.float64(1.2), np.float64(7.36))]
+  config: {'dt_L0': 0.01, 'dt_L1': 0.02, 'N_ANG': 48, 'N_Z': 9, 'INCLUDE_SIDE': True, 'swarm_size': 96, 'iters': 180, 'stage2_swarm': 64, 'stage2_iters': 80}

@@ -1,0 +1,57 @@
+"D:\python\python 3.12.6\python.exe" D:\MathModeling\2025国赛A题\Test1.py
+[debug] per-UAV nonzero candidates: {0: 2, 1: 8, 2: 12, 3: 3, 4: 5}
+
+[Q5 | Graph, k=1.0] 结果：
+  method : graph_Q5
+  mode : L0
+  selected : [{'uav': 'FY5', 'theta_deg': 105.927, 'v_u_mps': 140.0, 't_drop': 12.097, 'tau': 2.903, 't_burst': 15.0, 's_burst': (12423.748, 19.389, 1258.663)}, {'uav': 'FY1', 'theta_deg': 179.226, 'v_u_mps': 140.0, 't_drop': 1.564, 'tau': 4.436, 't_burst': 6.0, 's_burst': (16960.077, 11.349, 1703.463)}, {'uav': 'FY4', 'theta_deg': 266.038, 'v_u_mps': 129.643, 't_drop': 3.0, 'tau': 12.0, 't_burst': 15.0, 's_burst': (10865.633, 60.0, 1093.68)}, {'uav': 'FY2', 'theta_deg': 303.028, 'v_u_mps': 106.167, 't_drop': 10.328, 'tau': 0.472, 't_burst': 10.8, 's_burst': (12624.957, 438.683, 1398.908)}, {'uav': 'FY2', 'theta_deg': 203.963, 'v_u_mps': 137.473, 't_drop': 13.904, 'tau': 10.096, 't_burst': 24.0, 's_burst': (8985.013, 60.0, 900.001)}, {'uav': 'FY2', 'theta_deg': 237.917, 'v_u_mps': 139.444, 't_drop': 7.504, 'tau': 7.088, 't_burst': 14.592, 's_burst': (10919.272, -323.976, 1153.59)}, {'uav': 'FY3', 'theta_deg': 88.336, 'v_u_mps': 93.373, 't_drop': 28.739, 'tau': 4.261, 't_burst': 33.0, 's_burst': (6089.479, 80.0, 610.948)}, {'uav': 'FY3', 'theta_deg': 77.705, 'v_u_mps': 125.343, 't_drop': 23.147, 'tau': 0.2, 't_burst': 23.347, 's_burst': (6623.126, -140.771, 699.804)}, {'uav': 'FY3', 'theta_deg': 107.95, 'v_u_mps': 95.335, 't_drop': 26.315, 'tau': 5.786, 't_burst': 32.102, 's_burst': (5056.798, -88.56, 535.773)}, {'uav': 'FY1', 'theta_deg': 179.865, 'v_u_mps': 118.108, 't_drop': 5.317, 'tau': 5.483, 't_burst': 10.8, 's_burst': (16524.438, 3.0, 1652.519)}]
+  per_missile : [{'missile': 'M1', 'T_hit': 66.999, 'cover_s': 16.2, 'gap_s': 12.915, 'intervals': [(6.0, 9.615), (10.8, 11.67), (15.0, 18.21), (18.57, 22.665), (24.0, 26.22), (33.0, 35.1)]}, {'missile': 'M2', 'T_hit': 63.75, 'cover_s': 2.685, 'gap_s': 0.0, 'intervals': [(10.8, 13.47)]}, {'missile': 'M3', 'T_hit': 60.366, 'cover_s': 6.045, 'gap_s': 13.335, 'intervals': [(14.595, 16.725), (23.355, 25.38), (32.115, 33.96)]}]
+  cover_sum_s : 24.93
+  gap_sum_total_s : 26.25
+  score_k_total : 24.93
+  worst_gap_s : 50.265
+  config : {'dt_mask': 0.015, 'fracs': (0.1, 0.18, 0.25, 0.4, 0.55, 0.7, 0.85, 0.92, 0.96, 0.985), 'alphas': (0.6, 0.7, 0.8, 0.88, 0.92, 0.96, 0.985), 'taus': (0.55, 0.7, 0.85, 1.0, 1.15, 1.3), 'per_uav_keep': 36, 'budgets': (3, 3, 3, 3, 3), 'gap_fill': True, 'L1_polish': False, 'N_ANG': 48, 'N_Z': 9, 'INCLUDE_SIDE': True, 'k': 1.0}
+[debug] per-UAV nonzero candidates: {0: 2, 1: 8, 2: 12, 3: 3, 4: 5}
+
+[Q5 | Graph, k=0.9] 结果：
+  method : graph_Q5
+  mode : L0
+  selected : [{'uav': 'FY5', 'theta_deg': 105.927, 'v_u_mps': 140.0, 't_drop': 12.097, 'tau': 2.903, 't_burst': 15.0, 's_burst': (12423.748, 19.389, 1258.663)}, {'uav': 'FY4', 'theta_deg': 266.038, 'v_u_mps': 129.643, 't_drop': 3.0, 'tau': 12.0, 't_burst': 15.0, 's_burst': (10865.633, 60.0, 1093.68)}, {'uav': 'FY1', 'theta_deg': 179.226, 'v_u_mps': 140.0, 't_drop': 1.564, 'tau': 4.436, 't_burst': 6.0, 's_burst': (16960.077, 11.349, 1703.463)}, {'uav': 'FY2', 'theta_deg': 303.028, 'v_u_mps': 106.167, 't_drop': 10.328, 'tau': 0.472, 't_burst': 10.8, 's_burst': (12624.957, 438.683, 1398.908)}, {'uav': 'FY2', 'theta_deg': 237.917, 'v_u_mps': 139.444, 't_drop': 7.504, 'tau': 7.088, 't_burst': 14.592, 's_burst': (10919.272, -323.976, 1153.59)}, {'uav': 'FY2', 'theta_deg': 203.963, 'v_u_mps': 137.473, 't_drop': 13.904, 'tau': 10.096, 't_burst': 24.0, 's_burst': (8985.013, 60.0, 900.001)}, {'uav': 'FY3', 'theta_deg': 88.336, 'v_u_mps': 93.373, 't_drop': 28.739, 'tau': 4.261, 't_burst': 33.0, 's_burst': (6089.479, 80.0, 610.948)}, {'uav': 'FY3', 'theta_deg': 77.705, 'v_u_mps': 125.343, 't_drop': 23.147, 'tau': 0.2, 't_burst': 23.347, 's_burst': (6623.126, -140.771, 699.804)}, {'uav': 'FY3', 'theta_deg': 107.95, 'v_u_mps': 95.335, 't_drop': 26.315, 'tau': 5.786, 't_burst': 32.102, 's_burst': (5056.798, -88.56, 535.773)}, {'uav': 'FY1', 'theta_deg': 179.865, 'v_u_mps': 118.108, 't_drop': 5.317, 'tau': 5.483, 't_burst': 10.8, 's_burst': (16524.438, 3.0, 1652.519)}]
+  per_missile : [{'missile': 'M1', 'T_hit': 66.999, 'cover_s': 16.2, 'gap_s': 12.915, 'intervals': [(6.0, 9.615), (10.8, 11.67), (15.0, 18.21), (18.57, 22.665), (24.0, 26.22), (33.0, 35.1)]}, {'missile': 'M2', 'T_hit': 63.75, 'cover_s': 2.685, 'gap_s': 0.0, 'intervals': [(10.8, 13.47)]}, {'missile': 'M3', 'T_hit': 60.366, 'cover_s': 6.045, 'gap_s': 13.335, 'intervals': [(14.595, 16.725), (23.355, 25.38), (32.115, 33.96)]}]
+  cover_sum_s : 24.93
+  gap_sum_total_s : 26.25
+  score_k_total : 19.812
+  worst_gap_s : 50.265
+  config : {'dt_mask': 0.015, 'fracs': (0.1, 0.18, 0.25, 0.4, 0.55, 0.7, 0.85, 0.92, 0.96, 0.985), 'alphas': (0.6, 0.7, 0.8, 0.88, 0.92, 0.96, 0.985), 'taus': (0.55, 0.7, 0.85, 1.0, 1.15, 1.3), 'per_uav_keep': 36, 'budgets': (3, 3, 3, 3, 3), 'gap_fill': True, 'L1_polish': False, 'N_ANG': 48, 'N_Z': 9, 'INCLUDE_SIDE': True, 'k': 0.9}
+[debug] per-UAV nonzero candidates: {0: 2, 1: 8, 2: 12, 3: 3, 4: 5}
+
+[Q5 | Graph + L1 polish, k=1] 结果：
+  method : graph_Q5
+  mode : L0 + L1_polish
+  selected : [{'uav': 'FY5', 'theta_deg': 105.927, 'v_u_mps': 140.0, 't_drop': 12.097, 'tau': 2.903, 't_burst': 15.0, 's_burst': (12423.748, 19.389, 1258.663)}, {'uav': 'FY1', 'theta_deg': 179.226, 'v_u_mps': 134.0, 't_drop': 0.564, 'tau': 3.771, 't_burst': 4.335, 's_burst': (17219.224, 7.848, 1730.252)}, {'uav': 'FY4', 'theta_deg': 258.038, 'v_u_mps': 129.643, 't_drop': 3.5, 'tau': 12.0, 't_burst': 15.5, 's_burst': (10583.51, 34.166, 1093.68)}, {'uav': 'FY2', 'theta_deg': 299.028, 'v_u_mps': 118.167, 't_drop': 8.828, 'tau': 0.543, 't_burst': 9.371, 's_burst': (12537.313, 431.782, 1398.556)}, {'uav': 'FY2', 'theta_deg': 203.963, 'v_u_mps': 131.473, 't_drop': 15.404, 'tau': 10.096, 't_burst': 25.5, 's_burst': (8936.389, 38.389, 900.001)}, {'uav': 'FY2', 'theta_deg': 237.917, 'v_u_mps': 127.444, 't_drop': 9.004, 'tau': 7.088, 't_burst': 16.092, 's_burst': (10910.738, -337.589, 1153.59)}, {'uav': 'FY3', 'theta_deg': 104.336, 'v_u_mps': 99.373, 't_drop': 28.739, 'tau': 4.9, 't_burst': 33.639, 's_burst': (5172.297, 238.719, 582.229)}, {'uav': 'FY3', 'theta_deg': 77.705, 'v_u_mps': 137.343, 't_drop': 22.647, 'tau': 0.2, 't_burst': 22.847, 's_burst': (6668.159, 65.866, 699.804)}, {'uav': 'FY3', 'theta_deg': 123.95, 'v_u_mps': 113.335, 't_drop': 25.315, 'tau': 7.652, 't_burst': 32.968, 's_burst': (3913.312, 99.419, 412.766)}, {'uav': 'FY1', 'theta_deg': 179.865, 'v_u_mps': 140.0, 't_drop': 3.817, 'tau': 5.483, 't_burst': 9.3, 's_burst': (16498.004, 3.062, 1652.519)}]
+  per_missile : [{'missile': 'M1', 'T_hit': 66.999, 'cover_s': 30.1, 'gap_s': 8.38, 'intervals': [(4.5, 9.26), (9.3, 11.76), (18.3, 22.76), (23.38, 26.84), (27.06, 35.94), (37.0, 42.96)]}, {'missile': 'M2', 'T_hit': 63.75, 'cover_s': 9.8, 'gap_s': 18.3, 'intervals': [(10.18, 15.32), (33.64, 38.26)]}, {'missile': 'M3', 'T_hit': 60.366, 'cover_s': 3.54, 'gap_s': 0.0, 'intervals': [(16.1, 19.62)]}]
+  cover_sum_s : 43.44
+  gap_sum_total_s : 26.68
+  score_k_total : 43.44
+  worst_gap_s : 40.72
+  config : {'dt_mask': 0.02, 'fracs': (0.1, 0.18, 0.25, 0.4, 0.55, 0.7, 0.85, 0.92, 0.96, 0.985), 'alphas': (0.6, 0.7, 0.8, 0.88, 0.92, 0.96, 0.985), 'taus': (0.55, 0.7, 0.85, 1.0, 1.15, 1.3), 'per_uav_keep': 36, 'budgets': (3, 3, 3, 3, 3), 'gap_fill': True, 'L1_polish': True, 'N_ANG': 48, 'N_Z': 9, 'INCLUDE_SIDE': True, 'k': 1}
+
+进程已结束，退出代码为 0
+
+"D:\python\python 3.12.6\python.exe" D:\MathModeling\2025国赛A题\Problem5.py
+[debug] per-UAV nonzero candidates: {0: 2, 1: 8, 2: 12, 3: 3, 4: 5}
+
+[Q5 | Graph + L1 polish, k=0.9] 结果：
+  method : graph_Q5
+  mode : L0 + L1_polish
+  selected : [{'uav': 'FY5', 'theta_deg': 105.927, 'v_u_mps': 140.0, 't_drop': 12.097, 'tau': 2.903, 't_burst': 15.0, 's_burst': (12423.748, 19.389, 1258.663)}, {'uav': 'FY4', 'theta_deg': 258.038, 'v_u_mps': 129.643, 't_drop': 3.5, 'tau': 12.0, 't_burst': 15.5, 's_burst': (10583.51, 34.166, 1093.68)}, {'uav': 'FY1', 'theta_deg': 179.226, 'v_u_mps': 134.0, 't_drop': 0.564, 'tau': 3.771, 't_burst': 4.335, 's_burst': (17219.224, 7.848, 1730.252)}, {'uav': 'FY2', 'theta_deg': 299.028, 'v_u_mps': 118.167, 't_drop': 8.828, 'tau': 0.543, 't_burst': 9.371, 's_burst': (12537.313, 431.782, 1398.556)}, {'uav': 'FY2', 'theta_deg': 237.917, 'v_u_mps': 127.444, 't_drop': 9.004, 'tau': 7.088, 't_burst': 16.092, 's_burst': (10910.738, -337.589, 1153.59)}, {'uav': 'FY2', 'theta_deg': 203.963, 'v_u_mps': 131.473, 't_drop': 15.404, 'tau': 10.096, 't_burst': 25.5, 's_burst': (8936.389, 38.389, 900.001)}, {'uav': 'FY3', 'theta_deg': 104.336, 'v_u_mps': 99.373, 't_drop': 28.739, 'tau': 4.9, 't_burst': 33.639, 's_burst': (5172.297, 238.719, 582.229)}, {'uav': 'FY3', 'theta_deg': 77.705, 'v_u_mps': 137.343, 't_drop': 22.647, 'tau': 0.2, 't_burst': 22.847, 's_burst': (6668.159, 65.866, 699.804)}, {'uav': 'FY3', 'theta_deg': 123.95, 'v_u_mps': 113.335, 't_drop': 25.315, 'tau': 7.652, 't_burst': 32.968, 's_burst': (3913.312, 99.419, 412.766)}, {'uav': 'FY1', 'theta_deg': 179.865, 'v_u_mps': 140.0, 't_drop': 3.817, 'tau': 5.483, 't_burst': 9.3, 's_burst': (16498.004, 3.062, 1652.519)}]
+  per_missile : [{'missile': 'M1', 'T_hit': 66.999, 'cover_s': 30.1, 'gap_s': 8.38, 'intervals': [(4.5, 9.26), (9.3, 11.76), (18.3, 22.76), (23.38, 26.84), (27.06, 35.94), (37.0, 42.96)]}, {'missile': 'M2', 'T_hit': 63.75, 'cover_s': 9.8, 'gap_s': 18.3, 'intervals': [(10.18, 15.32), (33.64, 38.26)]}, {'missile': 'M3', 'T_hit': 60.366, 'cover_s': 3.54, 'gap_s': 0.0, 'intervals': [(16.1, 19.62)]}]
+  cover_sum_s : 43.44
+  gap_sum_total_s : 26.68
+  score_k_total : 36.428
+  worst_gap_s : 40.72
+  config : {'dt_mask': 0.02, 'fracs': (0.1, 0.18, 0.25, 0.4, 0.55, 0.7, 0.85, 0.92, 0.96, 0.985), 'alphas': (0.6, 0.7, 0.8, 0.88, 0.92, 0.96, 0.985), 'taus': (0.55, 0.7, 0.85, 1.0, 1.15, 1.3), 'per_uav_keep': 36, 'budgets': (3, 3, 3, 3, 3), 'gap_fill': True, 'L1_polish': True, 'N_ANG': 48, 'N_Z': 9, 'INCLUDE_SIDE': True, 'k': 0.9}
+
+进程已结束，退出代码为 0
+
+

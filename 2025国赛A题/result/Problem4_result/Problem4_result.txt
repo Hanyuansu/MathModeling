@@ -1,0 +1,86 @@
+"D:\python\python 3.12.6\python.exe" "D:\MathModeling\2025国赛A题\Problem4(graph).py"
+[debug] mask_mode=L0, per-UAV nonzero candidates: {0: 5, 1: 15, 2: 28}
+
+[Q4 | Graph-L0] 最优：
+  method : graph_max_coverage
+  strategy : L0
+  theta_deg : [179.349, 229.751, 88.336]
+  v_u_mps : [140.0, 117.045, 93.373]
+  drops_s : [2.417, 7.025, 28.739]
+  taus_s : [4.783, 7.975, 4.261]
+  uav_names : ['FY1', 'FY2', 'FY3']
+  uav_indices : [0, 1, 2]
+  bursts : [{'uav': 'FY1', 't_drop': 2.4170434248546533, 'tau': 4.782956575145346, 't_burst': 7.199999999999999, 's_burst': (16792.065097633193, 11.4556794130375, 1687.7899159933436)}, {'uav': 'FY2', 't_drop': 7.025311257900831, 'tau': 7.974688742099169, 't_burst': 15.0, 's_burst': (10865.632850838534, 59.999999999999886, 1088.0632850838533)}, {'uav': 'FY3', 't_drop': 28.7390880986176, 'tau': 4.260911901382402, 't_burst': 33.0, 's_burst': (6089.479090152666, 79.99999999999994, 610.9479090152665)}]
+  cover_total_s : 7.725
+  cover_intervals_s : [(7.2, 10.32), (15.0, 17.46), (33.0, 35.1)]
+  config : {'dt_mask': 0.015, 'fracs': (0.12, 0.25, 0.4, 0.55, 0.7, 0.85, 0.92, 0.96, 0.985, 0.995), 'alphas': (0.6, 0.7, 0.8, 0.88, 0.92, 0.96, 0.985), 'taus': (0.55, 0.7, 0.85, 1.0, 1.15, 1.3, 1.5), 'per_uav_keep': 28, 'force_one_per_uav': True}
+[debug] mask_mode=L1, per-UAV nonzero candidates: {0: 5, 1: 15, 2: 24}
+
+[Q4 | Graph-L1] 最优：
+  method : graph_max_coverage
+  strategy : L1
+  theta_deg : [179.349, 229.751, 88.336]
+  v_u_mps : [140.0, 117.045, 93.373]
+  drops_s : [2.417, 7.025, 28.739]
+  taus_s : [4.783, 7.975, 4.261]
+  uav_names : ['FY1', 'FY2', 'FY3']
+  uav_indices : [0, 1, 2]
+  bursts : [{'uav': 'FY1', 't_drop': 2.4170434248546533, 'tau': 4.782956575145346, 't_burst': 7.199999999999999, 's_burst': (16792.065097633193, 11.4556794130375, 1687.7899159933436)}, {'uav': 'FY2', 't_drop': 7.025311257900831, 'tau': 7.974688742099169, 't_burst': 15.0, 's_burst': (10865.632850838534, 59.999999999999886, 1088.0632850838533)}, {'uav': 'FY3', 't_drop': 28.7390880986176, 'tau': 4.260911901382402, 't_burst': 33.0, 's_burst': (6089.479090152666, 79.99999999999994, 610.9479090152665)}]
+  cover_total_s : 8.86
+  cover_intervals_s : [(7.2, 10.32), (15.0, 17.98), (33.0, 35.7)]
+  config : {'dt_mask': 0.02, 'fracs': (0.12, 0.25, 0.4, 0.55, 0.7, 0.85, 0.92, 0.96, 0.985, 0.995), 'alphas': (0.6, 0.7, 0.8, 0.88, 0.92, 0.96, 0.985), 'taus': (0.55, 0.7, 0.85, 1.0, 1.15, 1.3, 1.5), 'per_uav_keep': 24, 'force_one_per_uav': True, 'N_ANG': 48, 'N_Z': 9, 'INCLUDE_SIDE': True}
+[debug][DUAL] L0 pool per-UAV: {0: 5, 1: 15, 2: 28}
+[debug][DUAL] L1 re-score pool per-UAV: {0: 5, 1: 15, 2: 24}
+
+[Q4 | Graph-DUAL] 最优：
+  method : graph_max_coverage
+  strategy : DUAL(L0→L1)
+  theta_deg : [179.349, 229.751, 88.336]
+  v_u_mps : [140.0, 117.045, 93.373]
+  drops_s : [2.417, 7.025, 28.739]
+  taus_s : [4.783, 7.975, 4.261]
+  uav_names : ['FY1', 'FY2', 'FY3']
+  uav_indices : [0, 1, 2]
+  bursts : [{'uav': 'FY1', 't_drop': 2.4170434248546533, 'tau': 4.782956575145346, 't_burst': 7.199999999999999, 's_burst': (16792.065097633193, 11.4556794130375, 1687.7899159933436)}, {'uav': 'FY2', 't_drop': 7.025311257900831, 'tau': 7.974688742099169, 't_burst': 15.0, 's_burst': (10865.632850838534, 59.999999999999886, 1088.0632850838533)}, {'uav': 'FY3', 't_drop': 28.7390880986176, 'tau': 4.260911901382402, 't_burst': 33.0, 's_burst': (6089.479090152666, 79.99999999999994, 610.9479090152665)}]
+  cover_total_s : 8.86
+  cover_intervals_s : [(7.2, 10.32), (15.0, 17.98), (33.0, 35.7)]
+  config : {'dt_mask': 0.02, 'fracs': (0.12, 0.25, 0.4, 0.55, 0.7, 0.85, 0.92, 0.96, 0.985, 0.995), 'alphas': (0.6, 0.7, 0.8, 0.88, 0.92, 0.96, 0.985), 'taus': (0.55, 0.7, 0.85, 1.0, 1.15, 1.3, 1.5), 'per_uav_keep_L0': 28, 'per_uav_keep_L1': 24, 'force_one_per_uav': True, 'N_ANG': 48, 'N_Z': 9, 'INCLUDE_SIDE': True}
+
+[check] 基本求解 + 一致性
+[debug] mask_mode=L0, per-UAV nonzero candidates: {0: 5, 1: 15, 2: 28}
+[check] reconstruct cover=7.710s vs ans=7.725s (|Δ|=0.015s)
+[check] intervals reconstructed: [(7.215, 10.32), (15.0, 17.46), (33.0, 35.1)]
+[check] intervals in ans      : [(7.2, 10.32), (15.0, 17.46), (33.0, 35.1)]
+
+[check] DUAL 一致性
+[debug][DUAL] L0 pool per-UAV: {0: 5, 1: 15, 2: 24}
+[debug][DUAL] L1 re-score pool per-UAV: {0: 5, 1: 15, 2: 24}
+[check] reconstruct cover=8.860s vs ans=8.860s (|Δ|=0.000s)
+[check] intervals reconstructed: [(7.2, 10.32), (15.0, 17.98), (33.0, 35.7)]
+[check] intervals in ans      : [(7.2, 10.32), (15.0, 17.98), (33.0, 35.7)]
+
+[check] 时间步长收敛（DUAL）
+  dt vs cover: [(0.04, 8.88), (0.02, 8.86), (0.015, 8.865), (0.01, 8.84)]
+
+[check] 旋转不变性（DUAL）
+  angle vs cover: [(0, 8.86), (45, 8.86), (90, 8.86), (135, 8.86)]
+
+[随机三元组对比 | DUAL]
+  DUAL 解覆盖：8.860s，区间：[(7.2, 10.32), (15.0, 17.98), (33.0, 35.7)]
+  随机 100 组：min=3.140s, median=5.250s, max=8.460s
+  超过 DUAL 的比例：0.0%
+  Top-3 随机组合：
+    #1 cover=8.460s, intervals=[(7.2, 10.3), (15.0, 17.6), (33.0, 35.7)]
+       {'uav': 'FY1', 'theta_deg': 179.343, 'v': 140.0, 't_drop': 2.422, 'tau': 4.778}
+       {'uav': 'FY2', 'theta_deg': 287.08, 'v': 94.85, 't_drop': 9.339, 'tau': 5.661}
+       {'uav': 'FY3', 'theta_deg': 88.336, 'v': 93.373, 't_drop': 28.739, 'tau': 4.261}
+    #2 cover=7.620s, intervals=[(7.2, 10.32), (15.0, 17.98), (51.0, 52.46)]
+       {'uav': 'FY1', 'theta_deg': 179.349, 'v': 140.0, 't_drop': 2.417, 'tau': 4.783}
+       {'uav': 'FY2', 'theta_deg': 229.751, 'v': 117.045, 't_drop': 7.025, 'tau': 7.975}
+       {'uav': 'FY3', 'theta_deg': 135.502, 'v': 86.166, 't_drop': 41.841, 'tau': 9.159}
+    #3 cover=7.360s, intervals=[(7.2, 10.22), (15.0, 17.98), (42.0, 43.3)]
+       {'uav': 'FY1', 'theta_deg': 179.334, 'v': 140.0, 't_drop': 2.386, 'tau': 4.814}
+       {'uav': 'FY2', 'theta_deg': 229.751, 'v': 117.045, 't_drop': 7.025, 'tau': 7.975}
+       {'uav': 'FY3', 'theta_deg': 73.988, 'v': 74.708, 't_drop': 40.614, 'tau': 1.386}
+
+进程已结束，退出代码为 0
