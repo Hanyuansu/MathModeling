@@ -21,7 +21,7 @@ CUMCM 2025 A题 —— 第2问：单机单弹最优（L0 / L1 / two_stage 通用
 import math
 import numpy as np
 from typing import Tuple, List, Optional, Dict, Any
-
+import os
 # =========================
 # 一、题面常数与场景参数
 # =========================
@@ -696,6 +696,321 @@ def run_all_validations():
     st = multi_seed_stability(strategy="two_stage", seeds=(2025,7,17,99))
     print("  stability:", st)
 
+# ========= 可视化：时间条 + 3D球 =========
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+plt.rcParams['font.family'] = 'SimHei'
+plt.rcParams['axes.unicode_minus'] = False
+
+def _pick_focus_time(t_burst, intervals, dt=0.01):
+    """优先选‘最长遮蔽段’的中点；若无遮蔽，则选与视轴最近时刻"""
+    if intervals:
+        a, b = max(intervals, key=lambda ab: ab[1] - ab[0])
+        return 0.5 * (a + b)
+    # 无遮蔽：取最近距离时刻
+    T_HIT_loc = missile_hit_time(M0)
+    t0, t1 = t_burst, min(t_burst + T_EFFECT, T_HIT_loc)
+    ts = np.arange(t0, t1 + 1e-12, dt)
+    best_t, best_d = t0, 1e18
+    for tt in ts:
+        d = point_to_segment_dist(P_TARGET, missile_pos(M0, tt), smoke_center_after_burst(
+            burst_point(U0, math.radians(0), 0, 0, 0), tt, 0))  # 仅占位，不用这个值
+    # 实际用球心直接算
+    s_burst_dummy = np.zeros(3)  # 只是为了兼容写法，不用它
+    for tt in ts:
+        m = missile_pos(M0, tt)
+        # 最近距离 = 点到直线段(P_TARGET, m)的距离；球心此处只用视角关系，无需真实值
+        d = point_to_segment_dist(P_TARGET, m, P_TARGET)  # 与视轴的“本征尺度”比较
+        if d < best_d:
+            best_d, best_t = d, tt
+    return best_t
+
+def plot_cover_timeline(ans, ax=None):
+    """遮蔽区间时间条"""
+    tb = float(ans["t_burst_s"])
+    intervals = ans["cover_intervals_s"]
+    T_HIT_loc = missile_hit_time(M0)
+    t0, t1 = tb, min(tb + T_EFFECT, T_HIT_loc)
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(7.8, 1.8), constrained_layout=True)
+    ax.hlines(1, t0, t1, color="#dddddd", lw=8, label="有效窗口")
+    for a, b in intervals:
+        ax.hlines(1, a, b, color="tab:red", lw=8, label="遮蔽段")
+    ax.set_ylim(0.8, 1.2); ax.set_yticks([])
+    ax.set_xlabel("t / s"); ax.set_title("遮蔽时间区间")
+    # 去重 legend
+    handles, labels = ax.get_legend_handles_labels()
+    uniq = dict(zip(labels, handles))
+    ax.legend(uniq.values(), uniq.keys(), loc="upper right")
+    return ax
+
+def plot_cover_3d(ans, save_path=None):
+    """完整球 + 视轴（球内实/球外虚）+ 球心与垂足 P（第二张图风格）"""
+    th = math.radians(float(ans["theta_deg"]))
+    v  = float(ans["v_u_mps"])
+    td = float(ans["t_drop_s"])
+    ta = float(ans["tau_s"])
+    tb = td + ta
+
+    # 起爆点、焦点时刻
+    s_burst = burst_point(U0, th, v, td, ta)
+    t_focus = _pick_focus_time(tb, ans["cover_intervals_s"], dt=0.01)
+
+    # 焦点的导弹位置、球心位置、视轴方向
+    m = missile_pos(M0, t_focus)
+    s = smoke_center_after_burst(s_burst, t_focus, tb)
+    u = unit(m - P_TARGET)  # 视轴方向（圆柱中心 -> 导弹）
+
+    # 与球的交点（用直线：P_TARGET + u * t）
+    w = P_TARGET - s
+    b = 2.0 * float(np.dot(u, w))
+    c = float(np.dot(w, w)) - R_SMOKE**2
+    disc = b*b - 4.0*c
+    have_intersection = disc >= 0.0
+    if have_intersection:
+        sqrtD = math.sqrt(disc)
+        t1 = (-b - sqrtD) / 2.0
+        t2 = (-b + sqrtD) / 2.0
+        if t1 > t2: t1, t2 = t2, t1
+        P_in  = P_TARGET + u * t1
+        P_out = P_TARGET + u * t2
+
+    # 球心到视轴的垂足
+    # 视轴的参考点取 P_TARGET，方向 u
+    t_foot = float(np.dot(s - P_TARGET, u))
+    P_foot = P_TARGET + u * t_foot
+
+    # --- 画图 ---
+    fig = plt.figure(figsize=(8.6, 6.6), constrained_layout=True)
+    ax = fig.add_subplot(1, 1, 1, projection='3d')
+    ax.set_title("遮掩示意图")
+
+    # 球体（完整）
+    ugrid = np.linspace(0, 2*np.pi, 80)
+    vgrid = np.linspace(0,   np.pi, 40)
+    xs = s[0] + R_SMOKE*np.outer(np.cos(ugrid), np.sin(vgrid))
+    ys = s[1] + R_SMOKE*np.outer(np.sin(ugrid), np.cos(vgrid))  # 注意：这里改成 cos(v) 会变椭球观感
+    ys = s[1] + R_SMOKE*np.outer(np.sin(ugrid), np.sin(vgrid))
+    zs = s[2] + R_SMOKE*np.outer(np.ones_like(ugrid), np.cos(vgrid))
+    ax.plot_surface(xs, ys, zs, rstride=1, cstride=1, linewidth=0.3,
+                    alpha=0.25, color='tab:red', edgecolor='k')
+
+    # 视轴：球内实线、球外虚线
+    L = 2.2 * R_SMOKE
+    if have_intersection:
+        ax.plot([P_in[0], P_out[0]], [P_in[1], P_out[1]], [P_in[2], P_out[2]],
+                'k-', lw=2.2, label='导弹视轴（球内实线）')
+        L1 = P_in - u * L
+        L2 = P_out + u * L
+        ax.plot([L1[0], P_in[0]], [L1[1], P_in[1]], [L1[2], P_in[2]], 'k--', lw=2.2)
+        ax.plot([P_out[0], L2[0]], [P_out[1], L2[1]], [P_out[2], L2[2]], 'k--', lw=2.2)
+    else:
+        O1 = P_TARGET - u * L; O2 = P_TARGET + u * L
+        ax.plot([O1[0], O2[0]], [O1[1], O2[1]], [O1[2], O2[2]], 'k--', lw=2.2, label='导弹视轴')
+
+    # 球心与垂足 P + 垂线
+    ax.scatter([s[0]], [s[1]], [s[2]], c='tab:red', s=28, label='球心')
+    ax.scatter([P_foot[0]], [P_foot[1]], [P_foot[2]], c='k', s=28, label='垂足 P')
+    ax.plot([s[0], P_foot[0]], [s[1], P_foot[1]], [s[2], P_foot[2]], color='tab:red', lw=2.0)
+
+    # 等比例 & 紧凑取景：以球心为中心的立方体
+    pts = [s, P_foot]
+    if have_intersection: pts += [P_in, P_out]
+    pts = np.array(pts)
+    max_dev = float(np.max(np.abs(pts - s)))
+    half = max(1.35 * R_SMOKE, max_dev + 0.35 * R_SMOKE)
+    ax.set_xlim(s[0]-half, s[0]+half)
+    ax.set_ylim(s[1]-half, s[1]+half)
+    ax.set_zlim(s[2]-half, s[2]+half)
+    ax.set_box_aspect((1, 1, 1))
+    ax.set_xlabel('X / m'); ax.set_ylabel('Y / m'); ax.set_zlabel('Z / m')
+    ax.view_init(elev=22, azim=-55)
+    ax.legend(loc='upper right', fontsize=9)
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=180)
+        print(f"[OK] 图已保存：{save_path}")
+    plt.show()
+
+def _rand_points_on_cyl_surface(n, rng, R=R_TAR, H=H_TAR, center=CYL_CENTER):
+    """按面积权重随机采样：侧壁+上下底面"""
+    cx, cy, z0 = center
+    A_side = 2.0 * math.pi * R * H
+    A_cap  = math.pi * R * R
+    probs = np.array([A_side, A_cap, A_cap], dtype=float)
+    probs /= probs.sum()
+
+    pts = []
+    for _ in range(n):
+        face = rng.choice(3, p=probs)
+        if face == 0:
+            # 侧壁
+            ang = rng.uniform(0, 2*math.pi)
+            z   = rng.uniform(0, H)
+            x = cx + R * math.cos(ang)
+            y = cy + R * math.sin(ang)
+            pts.append((x, y, z))
+        elif face == 1:
+            # 底面 z=0
+            ang = rng.uniform(0, 2*math.pi)
+            r   = R * math.sqrt(rng.uniform(0, 1))
+            x = cx + r * math.cos(ang)
+            y = cy + r * math.sin(ang)
+            pts.append((x, y, 0.0))
+        else:
+            # 顶面 z=H
+            ang = rng.uniform(0, 2*math.pi)
+            r   = R * math.sqrt(rng.uniform(0, 1))
+            x = cx + r * math.cos(ang)
+            y = cy + r * math.sin(ang)
+            pts.append((x, y, H))
+    return np.array(pts, dtype=float)
+
+def _line_sphere_intersection(P, uhat, S, R):
+    """线 (P + t*uhat, t∈R, |uhat|=1) 与球 |X-S|=R 相交求解；返回 (hit, t1, t2, P_perp, r_perp)"""
+    w = P - S
+    b = 2.0 * float(np.dot(uhat, w))
+    c = float(np.dot(w, w)) - R*R
+    disc = b*b - 4.0*c
+    # 垂足与垂距
+    t_perp = -0.5 * b        # 因为 a=1
+    P_perp = P + t_perp * uhat
+    r_perp = float(np.linalg.norm(S - P_perp))
+    if disc < 0.0:
+        return False, None, None, P_perp, r_perp
+    sqrtD = math.sqrt(disc)
+    t1 = (-b - sqrtD) / 2.0
+    t2 = (-b + sqrtD) / 2.0
+    if t1 > t2: t1, t2 = t2, t1
+    return True, t1, t2, P_perp, r_perp
+
+def _mid_of_longest_interval(intervals, tb, dt=0.01):
+    if intervals:
+        a, b = max(intervals, key=lambda ab: ab[1]-ab[0])
+        return 0.5*(a+b)
+    # 退化：没有遮蔽区间，取有效窗中点
+    T_HIT_loc = missile_hit_time(M0)
+    t0, t1 = tb, min(tb + T_EFFECT, T_HIT_loc)
+    return 0.5*(t0+t1)
+
+def plot_cover_3d_random_rays(ans,
+                              n_points=10,
+                              seed=2026,
+                              require_exact_one=True,
+                              max_trials=500,
+                              outside_len=0.8,   # 虚线长度系数（×R）
+                              overshoot=0.20,    # 实线入射端向外“掏”出一点（×R）
+                              save_path="result/Problem2_result/Q2_multi10.png"):
+    """
+    像单条示意那样画球，但将视轴改为：在圆柱表面随机取 n_points 个点→每点连到导弹，
+    只在烟雾附近显示；强制使“恰好一条穿过烟雾”，其余都不穿过（若可行）。
+    """
+    th = math.radians(float(ans["theta_deg"]))
+    v  = float(ans["v_u_mps"])
+    td = float(ans["t_drop_s"])
+    ta = float(ans["tau_s"])
+    tb = td + ta
+
+    # 选一个“发生遮蔽”的时刻（取 L1/2s 输出的最长区间中点；没有则用有效窗中点）
+    t_focus = _mid_of_longest_interval(ans["cover_intervals_s"], tb, dt=0.01)
+
+    # 当时刻的几何
+    s_burst = burst_point(U0, th, v, td, ta)
+    S = smoke_center_after_burst(s_burst, t_focus, tb)
+    M = missile_pos(M0, t_focus)
+
+    rng = np.random.default_rng(seed)
+
+    # 反复抽样，尽量满足“恰好一条命中”
+    chosen = None
+    info   = None
+    for _ in range(max_trials):
+        PTS = _rand_points_on_cyl_surface(n_points, rng)
+        hits = []
+        segs = []
+        for P in PTS:
+            uhat = unit(M - P)
+            hit, t1, t2, P_perp, r_perp = _line_sphere_intersection(P, uhat, S, R_SMOKE)
+            segs.append((P, uhat, hit, t1, t2, P_perp, r_perp))
+            if hit and t2 >= 0.0:   # 往导弹方向的相交
+                hits.append(True)
+            else:
+                hits.append(False)
+        k = sum(hits)
+        if (require_exact_one and k == 1) or (not require_exact_one):
+            chosen, info = PTS, segs
+            break
+    # 如果实在凑不出恰好一条，就退一步：选命中数量最接近 1 的那次
+    if chosen is None:
+        chosen = PTS
+        info   = segs
+
+    # ---- 画图 ----
+    plt.rcParams['font.family'] = 'SimHei'; plt.rcParams['axes.unicode_minus'] = False
+    fig = plt.figure(figsize=(8.8, 6.8), constrained_layout=True)
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_title("遮掩示意图（圆柱面随机10点；恰好1条穿球）", pad=14)
+
+    # 球
+    u = np.linspace(0, 2*np.pi, 120); v = np.linspace(0, np.pi, 60)
+    xs = S[0] + R_SMOKE*np.outer(np.cos(u), np.sin(v))
+    ys = S[1] + R_SMOKE*np.outer(np.sin(u), np.sin(v))
+    zs = S[2] + R_SMOKE*np.outer(np.ones_like(u), np.cos(v))
+    ax.plot_surface(xs, ys, zs, color='tab:red', alpha=0.28,
+                    edgecolor='k', linewidth=0.25)
+    ax.scatter([S[0]], [S[1]], [S[2]], c='tab:red', s=28, label='球心')
+
+    # 画每条视轴：球内实线，球外短虚线，并标垂足
+    Lout = outside_len * R_SMOKE
+    n_hit = 0
+    all_pts = [S.copy()]
+    for (P, uhat, hit, t1, t2, P_perp, r_perp) in info:
+        if hit and t2 >= 0.0:
+            n_hit += 1
+            # 只画球内段（入口→出口），入口再向外“掏”一点增强可见
+            Pin  = P + t1 * uhat
+            Pout = P + t2 * uhat
+            Pin2 = Pin - overshoot * (np.linalg.norm(Pout-Pin)) * uhat
+            ax.plot([Pin2[0], Pout[0]], [Pin2[1], Pout[1]], [Pin2[2], Pout[2]],
+                    'k-', lw=2.2, label='导弹视轴（球内实线）' if n_hit==1 else None)
+            # 两侧短虚线
+            ax.plot([Pin2[0]-Lout*uhat[0], Pin2[0]], [Pin2[1]-Lout*uhat[1], Pin2[1]],
+                    [Pin2[2]-Lout*uhat[2], Pin2[2]], 'k--', lw=2.0)
+            ax.plot([Pout[0], Pout[0]+Lout*uhat[0]], [Pout[1], Pout[1]+Lout*uhat[1]],
+                    [Pout[2], Pout[2]+Lout*uhat[2]], 'k--', lw=2.0)
+            all_pts += [Pin2, Pout]
+        else:
+            # miss：以垂足为中心画一段短虚线
+            a = Lout
+            A = P_perp - a*uhat; B = P_perp + a*uhat
+            ax.plot([A[0], B[0]], [A[1], B[1]], [A[2], B[2]], '--', color='0.5', lw=1.8,
+                    label=None)
+        # 垂足点
+        ax.scatter([P_perp[0]], [P_perp[1]], [P_perp[2]], c='k', s=24, label='垂足 P')
+
+    # 紧凑取景（围绕球）
+    all_pts = np.array(all_pts)
+    max_dev = float(np.max(np.abs(all_pts - S)))
+    half = max(1.35*R_SMOKE, max_dev + 0.35*R_SMOKE)
+    ax.set_xlim(S[0]-half, S[0]+half)
+    ax.set_ylim(S[1]-half, S[1]+half)
+    ax.set_zlim(S[2]-half, S[2]+half)
+    ax.set_box_aspect((1,1,1))
+    ax.set_xlabel("X / m"); ax.set_ylabel("Y / m"); ax.set_zlabel("Z / m")
+    ax.view_init(elev=22, azim=-55)
+    # 去重 legend
+    handles, labels = ax.get_legend_handles_labels()
+    uniq = dict(zip(labels, handles))
+    ax.legend(uniq.values(), uniq.keys(), loc='upper right', fontsize=9)
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=200)
+        print(f"[OK] 已保存：{save_path}")
+    plt.show()
+
 # =========================
 # 九、示例调用
 # =========================
@@ -707,11 +1022,11 @@ if __name__ == "__main__":
     #     print("  ", k, ":", v)
     #
     # # 2) L1：高保真直接求（可略加大群体/迭代）
-    # ans_L1 = solve_q2(strategy="L1", N_ANG=48, N_Z=9, INCLUDE_SIDE=True, dt_L1=0.02,
-    #                   swarm_size=64, iters=120)
-    # print("\n[Q2 | L1] 最优解：")
-    # for k, v in ans_L1.items():
-    #     print("  ", k, ":", v)
+    ans_L1 = solve_q2(strategy="L1", N_ANG=48, N_Z=9, INCLUDE_SIDE=True, dt_L1=0.02,
+                      swarm_size=64, iters=120)
+    print("\n[Q2 | L1] 最优解：")
+    for k, v in ans_L1.items():
+        print("  ", k, ":", v)
     #
     # # 3) two_stage：先 L0 全局搜，再 L1 小规模精修（推荐）
     ans_2s = solve_q2(strategy="two_stage",
@@ -721,5 +1036,13 @@ if __name__ == "__main__":
     print("\n[Q2 | two_stage] 最优解：")
     for k, v in ans_2s.items():
         print("  ", k, ":", v)
+    # plot_cover_3d_random_rays(ans_2s, n_points=10, seed=2026,
+    #                           require_exact_one=True,
+    #                           save_path="result/Problem2_result/Q2_multi10.png")
+    # 时间条
+    plot_cover_timeline(ans_2s)
+
+    # 3D 示意（保存可选）
+    plot_cover_3d(ans_2s, save_path="result/Problem2_result/Q2.png")
 
     #run_all_validations()

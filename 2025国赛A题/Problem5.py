@@ -1,47 +1,31 @@
-# -*- coding: utf-8 -*-
-"""
-Q5：五架 UAV、每架 ≤3 枚，对三枚导弹的联合遮蔽（先 L0 再 L1），用满 15 枚
-
-要点：
-- 【锁定规则】每架 UAV 在“第一枚投放”时锁定 (theta, v)，之后该机所有投放必须同航向同速度（容差可设为 0）。
-- 【间隔约束】全流程统一以“投放时刻 t_drop”为基准，保持同一架 UAV 的相邻投放满足 t_drop 间隔 ≥ MIN_DROP_GAP（默认 1s）。
-- 两阶段：L0 生成候选+初始解 → L1 小抛光（仅调 t_drop/tau，不改 theta/v），抛光阶段也执行 t_drop 间隔检查。
-- 时间步长统一：DT_STEP（默认 0.015），L0/L1 使用同一 dt，避免统计口径不一致。
-- 先确保“三枚导弹均被至少一枚覆盖”，再继续贪心加弹，最后若仍不足 15 枚，用“零遮蔽填充弹”补满。
-- 报表 12 列；零遮蔽弹也输出一行（导弹编号为“-”，有效时长=0.0）。
-
-作者：ChatGPT
-"""
-
 import math
+import copy
+import statistics as stats
 import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
+rng = np.random.default_rng(2024)
 
 # =========================
 # 场景与常量
 # =========================
 g = 9.81
-VM = 300.0              # 导弹速度
-V_SINK = 3.0            # 烟团下沉速度
-R_SMOKE = 10.0          # 等效半径
-T_EFFECT = 20.0         # 单次起爆有效时长
+VM = 300.0
+V_SINK = 3.0
+R_SMOKE = 10.0
+T_EFFECT = 20.0
 
-# 统一时间步长（L0/L1 同步）
-DT_STEP = 0.015
+DT_STEP = 0.015  # L0/L1 同步步长
 
-# 目标：圆柱
 R_TAR, H_TAR = 7.0, 10.0
 CYL_CENTER = np.array([0.0, 200.0, 0.0], dtype=float)
 P_TARGET   = np.array([0.0, 200.0, 5.0], dtype=float)
 
-# 三枚导弹（给定初值）
 MISSILES = [
     {"name": "M1", "M0": np.array([20000.0,    0.0, 2000.0], dtype=float)},
     {"name": "M2", "M0": np.array([19000.0,  600.0, 2100.0], dtype=float)},
     {"name": "M3", "M0": np.array([18000.0, -600.0, 1900.0], dtype=float)},
 ]
 
-# 五架 UAV（初始位置、高度）
 UAVS = [
     {"name": "FY1", "U0": np.array([17800.0,     0.0, 1800.0], dtype=float)},
     {"name": "FY2", "U0": np.array([12000.0,  1400.0, 1400.0], dtype=float)},
@@ -50,28 +34,34 @@ UAVS = [
     {"name": "FY5", "U0": np.array([13000.0, -2000.0, 1300.0], dtype=float)},
 ]
 
-# 每架最多 3 枚
 BUDGETS = (3, 3, 3, 3, 3)
-MIN_DROP_GAP = 1.0      # 【规则】同机投放时刻 t_drop 最小间隔（秒）
+MIN_DROP_GAP = 1.0
 
-# 航向/速度锁定容差（可设严一些确保完全锁定）
+# 锁定容差（如需严格一致，设 0/0）
 HEADING_TOL_DEG = 2.0
-SPEED_TOL = 1.5
+SPEED_TOL       = 1.5
 
-# 采样参数（候选生成锚点）
+# 候选采样
 FRACS  = (0.10, 0.18, 0.25, 0.40, 0.55, 0.70, 0.85, 0.92, 0.96, 0.985)
 ALPHAS = (0.60, 0.70, 0.80, 0.88, 0.92, 0.96, 0.985)
 TAUS_MUL = (0.55, 0.70, 0.85, 1.00, 1.15, 1.30)
 PER_UAV_KEEP = 36
 DEDUP_EPS = 0.12
 
-# L1 目标采样
+# L1 采样
 N_ANG, N_Z, INCLUDE_SIDE = 48, 9, True
-POLISH_ROUNDS = 1        # L1 坐标下降轮次（适度即可）
+POLISH_ROUNDS = 1
 
+# 全局 SA 优化（L1 下）
+GLOBAL_SA_ON = True
+SA_ITERS = 2000
+SA_T0    = 0.5          # 初始温度（越大越容易接受变差解）
+SA_TEND  = 1e-3
+SA_SIG_T = 0.6          # t_drop 建议扰动标准差（秒）
+SA_SIG_A = 0.30         # tau 相对扰动比例（~±30%）
 
 # =========================
-# 基本几何/运动学
+# 基础几何/运动学与判定
 # =========================
 def unit(v: np.ndarray) -> np.ndarray:
     n = float(np.linalg.norm(v))
@@ -111,7 +101,7 @@ def point_to_segment_dist(P: np.ndarray, Q: np.ndarray, X: np.ndarray) -> float:
 
 def clip(x, lo, hi): return lo if x < lo else (hi if x > hi else x)
 
-# L0 判定：目标中心点代表视轴
+# L0 判定：圆柱中心点代表视轴
 def covered_L0_at_time(m0, p_target, s_burst, t_burst, t) -> bool:
     m_t = missile_pos(m0, t)
     s_t = smoke_center_after_burst(s_burst, t, t_burst)
@@ -126,8 +116,8 @@ def cyl_points_top_bottom(N_ang: int = 48) -> np.ndarray:
             out.append((cx+R_TAR*math.cos(ang), cy+R_TAR*math.sin(ang), z))
     return np.array(out, dtype=float)
 
-def cyl_points_side(N_ang: int = 48, N_z: int = 9) -> np.ndarray:
-    cx, cy, _ = CYL_CENTER; zs = np.linspace(0.0, H_TAR, N_z); out=[]
+def cyl_points_side(N_ang: int = 48, N_Z: int = 9) -> np.ndarray:
+    cx, cy, _ = CYL_CENTER; zs = np.linspace(0.0, H_TAR, N_Z); out=[]
     for z in zs:
         for k in range(N_ang):
             ang = 2.0*math.pi*k/N_ang
@@ -149,9 +139,8 @@ def covered_L1_at_time_vectorized(m0: np.ndarray, s_burst: np.ndarray, t_burst: 
     dist = np.linalg.norm(s_t - Y, axis=1)
     return bool(np.any(dist <= R_SMOKE))
 
-
 # =========================
-# 掩码/时间网格与打分（只看覆盖）
+# 时间网格/掩码/打分
 # =========================
 def _time_grid(T_hit: float, dt: float) -> np.ndarray:
     return np.arange(0.0, T_hit + 1e-12, dt)
@@ -203,9 +192,8 @@ def _mask_for_candidate_L1(uav_idx: int, cand, tgrids: Dict[str, np.ndarray], PT
 def _cover_sum(masks: Dict[str, np.ndarray], dt: float) -> float:
     return float(sum(mask.sum() for mask in masks.values()) * dt)
 
-
 # =========================
-# 候选生成（以导弹锚点反推）
+# 候选生成
 # =========================
 def _candidate_from_anchor(u0: np.ndarray, m0: np.ndarray,
                            frac: float, alpha: float, tau_mult: float,
@@ -213,13 +201,11 @@ def _candidate_from_anchor(u0: np.ndarray, m0: np.ndarray,
     T_HIT = missile_hit_time(m0)
     t_b = clip(frac * min(60.0, T_HIT-2.0), 0.5, 59.5)
     m_tb = missile_pos(m0, t_b)
-    Y = P_TARGET + alpha*(m_tb - P_TARGET)  # 预瞄起爆点
-
+    Y = P_TARGET + alpha*(m_tb - P_TARGET)
     dx, dy = Y[0]-u0[0], Y[1]-u0[1]
     theta = math.atan2(dy, dx)
     D_xy  = math.hypot(dx, dy)
     v = clip(D_xy / t_b, 70.0, 140.0)
-
     u0z, Yz = float(u0[2]), float(Y[2])
     tau_base = math.sqrt(max(0.0, 2.0*(u0z - Yz))/g) if u0z > Yz else 0.2
     tau_max_by_t = max(0.2, t_b - clamp_eps)
@@ -245,11 +231,10 @@ def build_candidates_L0(
                         cand = {"uav": u, "theta": th, "v": v, "t_drop": td, "tau": ta}
                         masks = _mask_for_candidate_L0(u, cand, tgrids)
                         score = _cover_sum(masks, dt)
-                        if score <= 0.0:  # 仅保留有效候选；零遮蔽稍后用“填充弹”机制处理
+                        if score <= 0.0:  # 有效候选
                             continue
                         cand.update({"mask_by_missile": masks, "score_cover": score, "t_burst": td+ta})
                         local.append(cand)
-        # 轻度按 t_burst 去重
         local.sort(key=lambda c:c["t_burst"])
         filtered=[]
         for c in local:
@@ -262,9 +247,8 @@ def build_candidates_L0(
         all_cands += filtered[:per_uav_keep]
     return all_cands, tgrids
 
-
 # =========================
-# 约束与增益
+# 约束/增益/工具
 # =========================
 def _angdiff(a: float, b: float) -> float:
     d = abs((a - b + math.pi) % (2*math.pi) - math.pi)
@@ -275,12 +259,9 @@ def _feasible_with(cand, chosen, budgets, min_drop_gap,
                    heading_tol_rad: float, speed_tol: float) -> bool:
     u = cand["uav"]
     if budgets[u] <= 0: return False
-    # ——【关键】用投放时刻 t_drop 做 1s 间隔限制——
-    td_new = cand["t_drop"]
     for c in chosen:
-        if c["uav"]==u and abs(td_new - c["t_drop"]) < min_drop_gap:
+        if c["uav"]==u and abs(float(c["t_drop"]) - float(cand["t_drop"])) < min_drop_gap:
             return False
-    # 航向/速度锁
     thv = locks.get(u)
     if thv is not None:
         th_ref, v_ref = thv
@@ -296,9 +277,8 @@ def _marginal_gain_cover(cand, union_masks, tgrids, dt):
         gain += float((new.sum() - old.sum()) * dt)
     return gain
 
-
 # =========================
-# 播种：保证 M1/M2/M3 均被覆盖
+# 播种 / 增产 / 贪心 / 补满
 # =========================
 def seed_cover_all_missiles(candidates: List[Dict[str,Any]],
                             tgrids: Dict[str,np.ndarray],
@@ -334,13 +314,8 @@ def seed_cover_all_missiles(candidates: List[Dict[str,Any]],
                 locks[u] = (best["theta"], best["v"])
             for nm in tgrids:
                 union_masks[nm] = np.logical_or(union_masks[nm], best["mask_by_missile"][nm])
-
     return chosen, union_masks, budgets, locks
 
-
-# =========================
-# 同航向同速度增产（固定 th/v 后，仅扫 t_burst 与 tau）
-# =========================
 def augment_locked_same_course(uav_idx: int, theta_ref: float, v_ref: float,
                                tgrids: Dict[str,np.ndarray], dt: float,
                                t_step: float = 1.0,
@@ -377,10 +352,6 @@ def augment_locked_same_course(uav_idx: int, theta_ref: float, v_ref: float,
     filtered.sort(key=lambda c:c["score_cover"], reverse=True)
     return filtered
 
-
-# =========================
-# 贪心：在 seed 基础上继续加弹（优先边际覆盖），直到预算用完
-# =========================
 def greedy_fill_after_seed(candidates, tgrids, dt,
                            seed_chosen, seed_union, seed_budgets, seed_locks,
                            budgets_per_uav=BUDGETS,
@@ -421,74 +392,61 @@ def greedy_fill_after_seed(candidates, tgrids, dt,
         pool = [x for x in pool if x is not best]
         if sum(max(0,b) for b in budgets.values()) == 0:
             break
-
     return chosen, union_masks, budgets, locks
 
-
-# =========================
-# 补齐 15 枚（允许遮蔽=0）
-# =========================
-def pad_zero_coverage_if_needed(chosen, union_masks, budgets, locks, tgrids, dt):
-    """
-    对于仍有剩余额度的 UAV，在其锁定的同航向/同速度下，以不同 t_drop/tau 生成“填充弹”，
-    即使遮蔽=0 也添加，直到凑满 15 枚。间隔检查基于 t_drop。
-    """
+def _force_fill_to_15(chosen_list, tgrids_loc, dt_loc):
+    locks_tmp = {}
+    for c in chosen_list:
+        u = c["uav"]
+        if u not in locks_tmp:
+            locks_tmp[u] = (c["theta"], c["v"])
     for u in range(len(UAVS)):
-        if locks.get(u) is None:
+        if u not in locks_tmp:
             u0 = UAVS[u]["U0"]
-            theta = math.atan2(P_TARGET[1]-u0[1], P_TARGET[0]-u0[0])
-            v = 100.0
-            locks[u] = (theta, v)
+            th = math.atan2(P_TARGET[1]-u0[1], P_TARGET[0]-u0[0])
+            locks_tmp[u] = (th, 100.0)
 
-    pools = {u: augment_locked_same_course(u, locks[u][0], locks[u][1], tgrids, dt, t_step=1.0) for u in range(len(UAVS))}
+    used_per_uav = {i:0 for i in range(len(UAVS))}
+    for c in chosen_list:
+        used_per_uav[c["uav"]] += 1
 
-    def ok_interval(u, t_drop):
-        for c in chosen:
-            if c["uav"]==u and abs(c["t_drop"] - t_drop) < MIN_DROP_GAP:
+    def ok_tdrop(u, td):
+        for x in chosen_list:
+            if x["uav"] == u and abs(float(x["t_drop"]) - float(td)) < MIN_DROP_GAP:
                 return False
         return True
 
-    while sum(max(0,b) for b in budgets.values()) > 0:
-        progressed=False
-        for u in range(len(UAVS)):
-            if budgets[u] <= 0:
-                continue
-            pick=None
-            for c in pools[u]:
-                if ok_interval(u, c["t_drop"]):
-                    pick = c; break
+    for u in range(len(UAVS)):
+        th, v = locks_tmp[u]
+        pool_u = augment_locked_same_course(u, th, v, tgrids_loc, dt_loc, t_step=1.0)
+        k = 0
+        while used_per_uav[u] < BUDGETS[u]:
+            pick = None
+            while k < len(pool_u):
+                if ok_tdrop(u, pool_u[k]["t_drop"]):
+                    pick = pool_u[k]; k += 1; break
+                k += 1
             if pick is None:
-                th, v = locks[u]
-                t_try=0.0
-                while t_try <= 60.0 and (not ok_interval(u, t_try)):
-                    t_try += 0.6
+                td = 0.0
+                while td <= 60.0 and (not ok_tdrop(u, td)):
+                    td += 0.25
                 tau = 0.3
-                cand = {"uav": u, "theta": th, "v": v, "t_drop": t_try, "tau": tau}
-                cand["mask_by_missile"] = _mask_for_candidate_L0(u, cand, tgrids)
-                cand["score_cover"] = _cover_sum(cand["mask_by_missile"], dt)
-                cand["t_burst"] = t_try + tau
-                pick = cand
-            chosen.append(pick)
-            budgets[u] -= 1
-            for nm in tgrids:
-                union_masks[nm] = np.logical_or(union_masks[nm], pick["mask_by_missile"][nm])
-            progressed=True
-            if sum(max(0,b) for b in budgets.values()) == 0:
-                break
-        if not progressed:
-            break
-    return chosen, union_masks
-
+                c = {"uav": u, "theta": th, "v": v, "t_drop": td, "tau": tau, "t_burst": td+tau}
+                c["mask_by_missile"] = _mask_for_candidate_L0(u, c, tgrids_loc)
+                c["score_cover"] = _cover_sum(c["mask_by_missile"], dt_loc)
+                pick = c
+            chosen_list.append(pick)
+            used_per_uav[u] += 1
+    return chosen_list
 
 # =========================
-# L1 小抛光（仅调整 t_drop/tau；保持同航向同速度；抛光也检测 t_drop 间隔）
+# L1 抛光（坐标下降）——保持锁定 & 1s 间隔
 # =========================
 def polish_L1_keep_course(selected: List[Dict[str,Any]],
                           tgrids: Dict[str,np.ndarray],
                           dt_mask: float = DT_STEP,
                           rounds: int = POLISH_ROUNDS,
-                          N_ang:int=48, N_Z:int=9, INCLUDE_SIDE:bool=True,
-                          min_drop_gap: float = MIN_DROP_GAP):
+                          N_ang:int=48, N_Z:int=9, INCLUDE_SIDE:bool=True):
     PTS = build_cylinder_samples(N_ang, N_Z, INCLUDE_SIDE)
 
     def rebuild_masks_L1(c):
@@ -497,7 +455,6 @@ def polish_L1_keep_course(selected: List[Dict[str,Any]],
         c2["score_cover"] = _cover_sum(c2["mask_by_missile"], dt_mask)
         return c2
 
-    # 初始化：全部换成 L1 掩码
     cur = [rebuild_masks_L1(c) for c in selected]
 
     def score_of(sol):
@@ -508,10 +465,9 @@ def polish_L1_keep_course(selected: List[Dict[str,Any]],
         sc = sum(float(union[nm].sum() * dt_mask) for nm in tgrids)
         return sc, union
 
-    # ——【新增】抛光阶段的 t_drop 间隔约束检查——
-    def ok_for_uav(u, td, others):
+    def ok_gap_with_others(u, td, others):
         for x in others:
-            if x["uav"] == u and abs(x["t_drop"] - td) < min_drop_gap:
+            if x["uav"]==u and abs(float(x["t_drop"]) - float(td)) < MIN_DROP_GAP:
                 return False
         return True
 
@@ -522,12 +478,11 @@ def polish_L1_keep_course(selected: List[Dict[str,Any]],
         for i in range(len(best)):
             base = best[:i] + best[i+1:]
             c = best[i]
-            # 小邻域（只动 t_drop、tau）；**先用 t_drop 做间隔过滤**
             tds  = [clip(c["t_drop"] + d, 0.0, 60.0) for d in (-1.2,-0.8,-0.4,0.0,0.4,0.8,1.2)]
             taus = [clip(c["tau"] * r, 0.2, 12.0)     for r in (0.85,1.0,1.15)]
             best_local=c; best_local_score=best_score
             for td in tds:
-                if not ok_for_uav(c["uav"], td, base):   # ——这里按 t_drop 间隔过滤——
+                if not ok_gap_with_others(c["uav"], td, base):
                     continue
                 for ta in taus:
                     cand = dict(c)
@@ -545,9 +500,93 @@ def polish_L1_keep_course(selected: List[Dict[str,Any]],
             final_union[nm] = np.logical_or(final_union[nm], c["mask_by_missile"][nm])
     return best, final_union
 
+# =========================
+# ★ L1 全局随机优化（模拟退火 SA）——保持锁定 & 1s 间隔
+# =========================
+def global_sa_optimize_L1(selected: List[Dict[str,Any]],
+                          tgrids: Dict[str,np.ndarray],
+                          dt_mask: float = DT_STEP,
+                          iters: int = SA_ITERS,
+                          T0: float = SA_T0,
+                          Tend: float = SA_TEND,
+                          sig_t: float = SA_SIG_T,
+                          sig_tau_rel: float = SA_SIG_A,
+                          N_ang:int=48, N_Z:int=9, INCLUDE_SIDE:bool=True):
+
+    PTS = build_cylinder_samples(N_ang, N_Z, INCLUDE_SIDE)
+
+    def rebuild(c):
+        c2 = dict(c)
+        c2["mask_by_missile"] = _mask_for_candidate_L1(c["uav"], c2, tgrids, PTS)
+        c2["score_cover"] = _cover_sum(c2["mask_by_missile"], dt_mask)
+        return c2
+
+    def score_of(sol):
+        union = {nm: np.zeros_like(tgrids[nm], dtype=bool) for nm in tgrids}
+        for c in sol:
+            for nm in tgrids:
+                union[nm] = np.logical_or(union[nm], c["mask_by_missile"][nm])
+        sc = sum(float(union[nm].sum() * dt_mask) for nm in tgrids)
+        return sc, union
+
+    def ok_gap_for_idx(sol, idx, td_new):
+        u = sol[idx]["uav"]
+        for j,c in enumerate(sol):
+            if j==idx: continue
+            if c["uav"]==u and abs(float(c["t_drop"]) - float(td_new)) < MIN_DROP_GAP:
+                return False
+        return True
+
+    cur = [rebuild(c) for c in selected]
+    cur_score, cur_union = score_of(cur)
+    best = [dict(c) for c in cur]
+    best_score = cur_score
+
+    def snap(x):  # 可选：对齐到 dt 网格
+        k = round(x / DT_STEP)
+        return float(max(0.0, min(60.0, k * DT_STEP)))
+
+    for k in range(iters):
+        i = rng.integers(0, len(cur))
+        c0 = cur[i]
+        td0, ta0 = float(c0["t_drop"]), float(c0["tau"])
+
+        # 生成邻域（保持锁定；只改 t_drop/tau）
+        trial = dict(c0)
+        for _attempt in range(12):
+            td = snap(td0 + rng.normal(0.0, sig_t))
+            if not ok_gap_for_idx(cur, i, td):
+                continue
+            ta = float(clip(ta0 * (1.0 + rng.normal(0.0, sig_tau_rel)), 0.2, 12.0))
+            trial["t_drop"] = td
+            trial["tau"] = ta
+            trial["t_burst"] = td + ta
+            trial = rebuild(trial)
+            break
+        else:
+            continue  # 没找到满足 1s 间隔的邻域
+
+        # 评估新解（全量并集，15 枚规模可接受）
+        new_sol = cur[:i] + [trial] + cur[i+1:]
+        new_score, _ = score_of(new_sol)
+
+        # 退火接受准则
+        T = T0 * (Tend / T0) ** (k / max(1, iters-1))
+        if new_score >= cur_score or rng.random() < math.exp((new_score - cur_score) / max(1e-12, T)):
+            cur = new_sol
+            cur_score = new_score
+            if cur_score > best_score:
+                best = [dict(x) for x in cur]
+                best_score = cur_score
+
+    final_union = {nm: np.zeros_like(tgrids[nm], dtype=bool) for nm in tgrids}
+    for c in best:
+        for nm in tgrids:
+            final_union[nm] = np.logical_or(final_union[nm], c["mask_by_missile"][nm])
+    return best, final_union
 
 # =========================
-# 报表（12列；零遮蔽也输出一行）
+# 报表
 # =========================
 def _drop_point(u0: np.ndarray, theta: float, v_u: float, t_drop: float) -> np.ndarray:
     return uav_pos(u0, theta, v_u, t_drop)
@@ -555,7 +594,7 @@ def _drop_point(u0: np.ndarray, theta: float, v_u: float, t_drop: float) -> np.n
 def build_report_rows(selected_raw: List[Dict[str,Any]],
                       tgrids: Dict[str,np.ndarray],
                       dt: float) -> List[Dict[str,Any]]:
-    # 各 UAV 内部按 t_drop 编号 FYi-1/2/3
+
     by_uav={}
     for c in selected_raw:
         by_uav.setdefault(c["uav"], []).append(c)
@@ -573,13 +612,11 @@ def build_report_rows(selected_raw: List[Dict[str,Any]],
         r_drop = _drop_point(u0, c["theta"], v_u, t_drop)
         s_burst = burst_point(u0, c["theta"], v_u, t_drop, tau)
         smoke_id=f"{u_name}-{c.get('_seq_in_uav',1)}"
-        # 逐导弹输出（有正遮蔽的逐条；若都为0，输出一条 0）
         had_positive=False
         for m in MISSILES:
             name=m["name"]; mask=c["mask_by_missile"][name]
             eff_s=float(mask.sum()*dt)
-            if eff_s<=0.0:
-                continue
+            if eff_s<=0.0: continue
             had_positive=True
             rows.append({
                 "无人机编号": u_name,
@@ -623,30 +660,28 @@ def print_report_rows(rows: List[Dict[str,Any]]):
     for r in rows:
         print("\t".join(str(r[h]) for h in headers))
 
-
 # =========================
-# 主入口：先 L0，再 L1，凑满 15 枚
+# 主入口：L0→贪心→补满→L1抛光→（可选）L1全局SA
 # =========================
 def solve_q5(
     dt_step: float = DT_STEP,
     do_polish_L1: bool = True,
+    do_global_SA: bool = GLOBAL_SA_ON,
     heading_tol_deg: float = HEADING_TOL_DEG,
     speed_tol: float = SPEED_TOL
 ) -> Dict[str,Any]:
-    # 1) L0 候选
+    # L0 候选
     candidates_L0, tgrids_L0 = build_candidates_L0(dt=dt_step)
     counts = {i: sum(1 for c in candidates_L0 if c["uav"]==i) for i in range(len(UAVS))}
     print("[debug] L0 per-UAV nonzero candidates:", counts)
 
-    # 2) 播种：保证三枚导弹都被至少一枚覆盖
+    # 播种→贪心→补满
     seed_chosen, seed_union, budgets, locks = seed_cover_all_missiles(
         candidates_L0, tgrids_L0, dt_step,
         budgets_per_uav=BUDGETS,
         min_drop_gap=MIN_DROP_GAP,
         heading_tol_deg=heading_tol_deg, speed_tol=speed_tol
     )
-
-    # 3) 贪心继续加弹（允许边际=0）
     chosen, union, budgets, locks = greedy_fill_after_seed(
         candidates_L0, tgrids_L0, dt_step,
         seed_chosen, seed_union, budgets, locks,
@@ -654,52 +689,31 @@ def solve_q5(
         min_drop_gap=MIN_DROP_GAP,
         heading_tol_deg=heading_tol_deg, speed_tol=speed_tol
     )
+    chosen = _force_fill_to_15(chosen, tgrids_L0, dt_step)
+    assert len(chosen) == sum(BUDGETS), f"[fatal] 只选了 {len(chosen)}/{sum(BUDGETS)}"
 
-    # 4) 补齐 15 枚（零遮蔽也允许）
-    chosen, union = pad_zero_coverage_if_needed(chosen, union, budgets, locks, tgrids_L0, dt_step)
-
-    # 安全裁剪到各 UAV 预算
-    used_per_uav = {i:0 for i in range(len(UAVS))}
-    final=[]
-    for c in chosen:
-        u=c["uav"]
-        if used_per_uav[u] < BUDGETS[u]:
-            final.append(c); used_per_uav[u]+=1
-
-    total_need = sum(BUDGETS)
-    if len(final) < total_need:
-        for u in range(len(UAVS)):
-            while used_per_uav[u] < BUDGETS[u]:
-                u0 = UAVS[u]["U0"]; th,v = locks[u]
-                t_drop = 0.0 + (used_per_uav[u])*0.6
-                tau = 0.3
-                c = {"uav": u, "theta": th, "v": v, "t_drop": t_drop, "tau": tau, "t_burst": t_drop+tau}
-                c["mask_by_missile"] = _mask_for_candidate_L0(u, c, tgrids_L0)
-                c["score_cover"] = _cover_sum(c["mask_by_missile"], dt_step)
-                final.append(c); used_per_uav[u]+=1
-                if len(final) >= total_need: break
-        union = {nm: np.zeros_like(tgrids_L0[nm], dtype=bool) for nm in tgrids_L0}
-        for c in final:
-            for nm in tgrids_L0:
-                union[nm] = np.logical_or(union[nm], c["mask_by_missile"][nm])
-
-    chosen_L0, union_L0 = final, union
-
-    # 5) L1 抛光（仅调 t_drop/tau；抛光也用 t_drop 间隔约束）
-    mode = "L0"
+    mode = "L0 only"
+    # L1 抛光
+    tgrids = {m["name"]: _time_grid(missile_hit_time(m["M0"]), dt_step) for m in MISSILES}
     if do_polish_L1:
-        tgrids_L1 = {m["name"]: _time_grid(missile_hit_time(m["M0"]), dt_step) for m in MISSILES}
-        chosen_L1, union_L1 = polish_L1_keep_course(
-            chosen_L0, tgrids_L1, dt_mask=dt_step,
-            rounds=POLISH_ROUNDS, N_ang=N_ANG, N_Z=N_Z, INCLUDE_SIDE=INCLUDE_SIDE,
-            min_drop_gap=MIN_DROP_GAP
-        )
-        chosen, union, tgrids = chosen_L1, union_L1, tgrids_L1
+        chosen, union = polish_L1_keep_course(chosen, tgrids, dt_mask=dt_step,
+                                              rounds=POLISH_ROUNDS, N_ang=N_ANG, N_Z=N_Z, INCLUDE_SIDE=INCLUDE_SIDE)
         mode = "L0 → L1(polish)"
-    else:
-        chosen, union, tgrids = chosen_L0, union_L0, tgrids_L0
 
-    # 6) 汇总
+    # ★ L1 全局 SA 优化（以抛光后的解为初始解）
+    if do_global_SA:
+        before_score = sum(float(union[nm].sum()*dt_step) for nm in union)
+        chosen, union = global_sa_optimize_L1(
+            selected=chosen, tgrids=tgrids, dt_mask=dt_step,
+            iters=SA_ITERS, T0=SA_T0, Tend=SA_TEND,
+            sig_t=SA_SIG_T, sig_tau_rel=SA_SIG_A,
+            N_ang=N_ANG, N_Z=N_Z, INCLUDE_SIDE=INCLUDE_SIDE
+        )
+        after_score = sum(float(union[nm].sum()*dt_step) for nm in union)
+        print(f"[info] SA 提升覆盖: {before_score:.3f} → {after_score:.3f} 秒")
+        mode += " → L1(SA)"
+
+    # 汇总
     per_missile=[]
     for m in MISSILES:
         name=m["name"]; tgrid=tgrids[name]; mask=union[name]
@@ -733,37 +747,359 @@ def solve_q5(
 
     rows = build_report_rows(chosen, tgrids, dt_step)
 
-    used_total = len(chosen)
-    if used_total < sum(BUDGETS):
-        print(f"[warn] 总可行解不足：选了 {used_total}/{sum(BUDGETS)}。")
-
     return {
         "method": "graph_Q5",
         "mode": mode,
         "selected": out_sel,
         "per_missile": per_missile,
         "cover_sum_s": cover_sum,
-        "used_total": used_total,
+        "used_total": len(chosen),
         "config": {
             "dt_step": dt_step,
             "budgets": BUDGETS,
             "min_drop_gap": MIN_DROP_GAP,
-            "heading_tol_deg": HEADING_TOL_DEG,
-            "speed_tol": SPEED_TOL,
+            "heading_tol_deg": HEADING_TOL_DEG, "speed_tol": SPEED_TOL,
             "L1_polish": do_polish_L1,
+            "L1_SA": do_global_SA,
+            "SA_iters": SA_ITERS,
             "N_ANG": N_ANG, "N_Z": N_Z, "INCLUDE_SIDE": INCLUDE_SIDE
         },
         "rows": rows
     }
 
+# =========================
+# 验证/稳健性工具
+# =========================
+def _name_to_idx():
+    return {UAVS[i]["name"]: i for i in range(len(UAVS))}
+
+def _name2idx():  # 兼容旧名
+    return _name_to_idx()
+
+def _ans_to_internal_selected(ans_selected):
+    """把 solve_q5 输出的 selected（带中文名与角度制）转回内部格式"""
+    n2i = _name2idx()
+    internal=[]
+    for r in ans_selected:
+        internal.append({
+            "uav": n2i[str(r["uav"])],
+            "theta": math.radians(float(r["theta_deg"])),
+            "v": float(r["v_u_mps"]),
+            "t_drop": float(r["t_drop"]),
+            "tau": float(r["tau"]),
+            "t_burst": float(r["t_drop"])+float(r["tau"])
+        })
+    return internal
+
+def _recompute_cover_L1(selected_internal, dt: float, N_ANG:int=48, N_Z:int=9, INCLUDE_SIDE:bool=True):
+    """对给定的 15 枚（内部格式）在 L1 下重算覆盖（并集），返回 cover_sum、union、tgrids"""
+    tgrids = {m["name"]: _time_grid(missile_hit_time(m["M0"]), dt) for m in MISSILES}
+    union  = {nm: np.zeros_like(tgrids[nm], dtype=bool) for nm in tgrids}
+    PTS    = build_cylinder_samples(N_ang=N_ANG, N_Z=N_Z, include_side=INCLUDE_SIDE)
+
+    def rebuild_masks_L1(c):
+        c2 = dict(c)
+        c2["mask_by_missile"] = _mask_for_candidate_L1(c2["uav"], c2, tgrids, PTS)
+        return c2
+
+    for c in selected_internal:
+        cc = rebuild_masks_L1(c)
+        for nm in tgrids:
+            union[nm] = np.logical_or(union[nm], cc["mask_by_missile"][nm])
+
+    cover_sum = float(sum(union[nm].sum() * dt for nm in union))
+    return cover_sum, union, tgrids
+
+# --------- 约束修复：同机 1s 间隔投放 ---------
+def _repair_min_gap_per_uav(selected_internal, min_gap: float = MIN_DROP_GAP):
+    by_uav = {}
+    for c in selected_internal:
+        by_uav.setdefault(c["uav"], []).append(c)
+    for u,lst in by_uav.items():
+        lst.sort(key=lambda x: x["t_drop"])
+        last = -1e9
+        for c in lst:
+            td = float(c["t_drop"])
+            if td < last + min_gap:
+                td = last + min_gap
+                td = clip(td, 0.0, 60.0)
+                c["t_drop"] = td
+                c["t_burst"] = td + float(c["tau"])
+            last = float(c["t_drop"])
+    return selected_internal
+
+# --------- 随机扰动 & 全局随机 ---------
+def _perturb_solution(selected_internal, sigma_t: float = 0.6, sigma_tau_rel: float = 0.3, seed: int = None):
+    rng_loc = np.random.default_rng(seed)
+    out=[]
+    for c in selected_internal:
+        td = float(c["t_drop"]) + float(rng_loc.normal(0.0, sigma_t))
+        ta = float(c["tau"])    * (1.0 + float(rng_loc.normal(0.0, sigma_tau_rel)))
+        td = clip(td, 0.0, 60.0)
+        ta = clip(ta, 0.2, 12.0)
+        out.append({
+            "uav": c["uav"], "theta": float(c["theta"]), "v": float(c["v"]),
+            "t_drop": td, "tau": ta, "t_burst": td+ta
+        })
+    return _repair_min_gap_per_uav(out, MIN_DROP_GAP)
+
+def _random_solution_global_like(selected_internal, seed: int = None):
+    """保留每架 UAV 的(θ,v)锁定不变，重新在全局范围随机三发（同机 1s 间隔）"""
+    rng_loc = np.random.default_rng(seed)
+    # 获得每架(uav)->(theta,v)
+    thv = {}
+    for c in selected_internal:
+        thv[c["uav"]] = (float(c["theta"]), float(c["v"]))
+    # 每机生成预算数目的新弹
+    cnt_per_uav = {i:0 for i in range(len(UAVS))}
+    out=[]
+    for u in range(len(UAVS)):
+        th, v = thv[u]
+        K = BUDGETS[u]
+        # 先随机出 K 个 t_drop，排序再修间隔
+        tds = list(rng_loc.uniform(0.0, 60.0, size=K))
+        tds.sort()
+        # 修间隔
+        for i in range(1, K):
+            if tds[i] < tds[i-1] + MIN_DROP_GAP:
+                tds[i] = min(60.0, tds[i-1] + MIN_DROP_GAP)
+        for i in range(K):
+            td  = float(tds[i])
+            tau = float(rng_loc.uniform(0.2, 12.0))
+            out.append({"uav": u, "theta": th, "v": v, "t_drop": td, "tau": tau, "t_burst": td+tau})
+    return out
+
+# --------- Monte-Carlo 对比 ---------
+def monte_carlo_compare(ans, n_trials: int = 100,
+                        sigma_t: float = 0.6, sigma_tau_rel: float = 0.3,
+                        dt: float = DT_STEP, N_ANG: int = 48, N_Z: int = 9, INCLUDE_SIDE: bool = True,
+                        also_global_random: bool = True):
+    base_sel = _ans_to_internal_selected(ans["selected"])
+    base_cov, _, _ = _recompute_cover_L1(base_sel, dt, N_ANG, N_Z, INCLUDE_SIDE)
+
+    better_local = 0
+    cov_local = []
+    for i in range(n_trials):
+        cand = _perturb_solution(base_sel, sigma_t=sigma_t, sigma_tau_rel=sigma_tau_rel, seed=2024+i)
+        cov, _, _ = _recompute_cover_L1(cand, dt, N_ANG, N_Z, INCLUDE_SIDE)
+        cov_local.append(cov)
+        if cov > base_cov + 1e-9:
+            better_local += 1
+
+    print("\n[MC-Local] 局部扰动对比:")
+    print(f"  基线覆盖(L1): {base_cov:.3f} s")
+    print(f"  {n_trials} 组扰动 覆盖均值/中位/最大/最小: {stats.mean(cov_local):.3f} / {stats.median(cov_local):.3f} / {max(cov_local):.3f} / {min(cov_local):.3f}")
+    print(f"  超过基线的比例: {better_local}/{n_trials} = {better_local/n_trials:.2%}")
+
+    cov_glob = None
+    if also_global_random:
+        better_glob = 0
+        cov_glob = []
+        for i in range(n_trials):
+            cand = _random_solution_global_like(base_sel, seed=4096+i)
+            cov, _, _ = _recompute_cover_L1(cand, dt, N_ANG, N_Z, INCLUDE_SIDE)
+            cov_glob.append(cov)
+            if cov > base_cov + 1e-9:
+                better_glob += 1
+        print("\n[MC-Global] 全局随机对比（锁(θ,v)）:")
+        print(f"  {n_trials} 组随机 覆盖均值/中位/最大/最小: {stats.mean(cov_glob):.3f} / {stats.median(cov_glob):.3f} / {max(cov_glob):.3f} / {min(cov_glob):.3f}")
+        print(f"  超过基线的比例: {better_glob}/{n_trials} = {better_glob/n_trials:.2%}")
+
+    return {
+        "base": base_cov,
+        "local": cov_local,
+        "global": cov_glob
+    }
+
+# --------- 步长/采样稳健性 ---------
+def sweep_dt(ans, dt_list=(0.010, 0.015, 0.020, 0.030), N_ANG:int=48, N_Z:int=9, INCLUDE_SIDE:bool=True):
+    sel = _ans_to_internal_selected(ans["selected"])
+    out=[]
+    for dt in dt_list:
+        cov, _, _ = _recompute_cover_L1(sel, dt, N_ANG, N_Z, INCLUDE_SIDE)
+        out.append((dt, cov))
+    base = out[0][1]
+    print("\n[稳健性] 步长灵敏度（L1）：")
+    for dt, cov in out:
+        print(f"  dt={dt:.3f}  cover={cov:.3f}  相对偏差={(cov-base)/max(1e-12,base):+.2%}")
+    return out
+
+def sweep_sampling(ans, NANG_list=(24,48,96), NZ_list=(5,9,13), dt: float = DT_STEP):
+    sel = _ans_to_internal_selected(ans["selected"])
+    base_cov, _, _ = _recompute_cover_L1(sel, dt, N_ANG=48, N_Z=9, INCLUDE_SIDE=True)
+    print("\n[稳健性] 采样密度灵敏度（L1）：")
+    print(f"  基线(N_ANG=48,N_Z=9): {base_cov:.3f} s")
+    out=[]
+    for na in NANG_list:
+        for nz in NZ_list:
+            cov, _, _ = _recompute_cover_L1(sel, dt, N_ANG=na, N_Z=nz, INCLUDE_SIDE=True)
+            out.append((na, nz, cov))
+            print(f"  N_ANG={na:>3}, N_Z={nz:>2} -> cover={cov:.3f}  偏差={(cov-base_cov)/max(1e-12,base_cov):+.2%}")
+    return out
+
+# --------- 扰动曲线（用于论文画图的数据表）---------
+def perturbation_curve(ans, sig_t_grid=(0.0,0.2,0.4,0.6,0.8,1.0), sig_tau_rel: float = 0.30,
+                       reps: int = 30, dt: float = DT_STEP, N_ANG:int=48, N_Z:int=9):
+    sel = _ans_to_internal_selected(ans["selected"])
+    base_cov, _, _ = _recompute_cover_L1(sel, dt, N_ANG, N_Z, True)
+    print("\n[扰动曲线] 覆盖-噪声关系（σ_t, 固定 σ_tau_rel=%.2f）:" % sig_tau_rel)
+    print(f"  基线覆盖: {base_cov:.3f} s")
+    table=[]
+    for st in sig_t_grid:
+        vals=[]
+        for r in range(reps):
+            cand = _perturb_solution(sel, sigma_t=st, sigma_tau_rel=sig_tau_rel, seed=7000+r)
+            cov, _, _ = _recompute_cover_L1(cand, dt, N_ANG, N_Z, True)
+            vals.append(cov)
+        mean_v = float(np.mean(vals))
+        p10   = float(np.percentile(vals, 10))
+        p50   = float(np.percentile(vals, 50))
+        p90   = float(np.percentile(vals, 90))
+        print(f"  σ_t={st:.2f} -> mean={mean_v:.3f}, P10={p10:.3f}, P50={p50:.3f}, P90={p90:.3f}")
+        table.append((st, mean_v, p10, p50, p90))
+    return table
+
+# --------- 一键验证入口 ---------
+def validate_q5(ans,
+                n_trials: int = 100,
+                local_sigma_t: float = 0.6,
+                local_sigma_tau_rel: float = 0.30,
+                dt_list=(0.010,0.015,0.020,0.030),
+                NANG_list=(24,48,96),
+                NZ_list=(5,9,13),
+                curve_sig_t=(0.0,0.2,0.4,0.6,0.8,1.0),
+                curve_reps: int = 30):
+    """综合验证：随机对比 + 步长/采样 + 扰动曲线"""
+    _ = monte_carlo_compare(ans, n_trials=n_trials,
+                            sigma_t=local_sigma_t, sigma_tau_rel=local_sigma_tau_rel,
+                            dt=DT_STEP, N_ANG=48, N_Z=9, INCLUDE_SIDE=True,
+                            also_global_random=True)
+    _ = sweep_dt(ans, dt_list=dt_list, N_ANG=48, N_Z=9, INCLUDE_SIDE=True)
+    _ = sweep_sampling(ans, NANG_list=NANG_list, NZ_list=NZ_list, dt=DT_STEP)
+    _ = perturbation_curve(ans, sig_t_grid=curve_sig_t, sig_tau_rel=local_sigma_tau_rel,
+                           reps=curve_reps, dt=DT_STEP, N_ANG=48, N_Z=9)
 
 # =========================
-# 示例运行
+# 邻域检验（最优解附近取样，保持锁定与 1s 间隔）
 # =========================
+def _group_by_uav(selected_internal):
+    by={}
+    for c in selected_internal:
+        by.setdefault(c["uav"], []).append(c)
+    for u,lst in by.items():
+        lst.sort(key=lambda x: x["t_drop"])
+    return by
+
+def _apply_uniform_shift_per_uav(base_sel, eps_t: float, eps_tau: float, rng_loc):
+    """
+    保持同机 3 发的相对间隔不变：对同一 UAV 的 t_drop 全体平移 δt，tau 全体平移 δτ。
+    这样自动保持“同机 1 s 间隔”，且只在小邻域里晃动。
+    """
+    cand = copy.deepcopy(base_sel)
+    by = _group_by_uav(cand)
+    for u,lst in by.items():
+        dt_u = float(rng_loc.uniform(-eps_t,  eps_t))
+        da_u = float(rng_loc.uniform(-eps_tau, eps_tau))
+        for c in lst:
+            td = clip(float(c["t_drop"]) + dt_u, 0.0, 60.0)
+            ta = clip(float(c["tau"])    + da_u, 0.2, 12.0)
+            c["t_drop"]  = td
+            c["tau"]     = ta
+            c["t_burst"] = td + ta
+    return cand
+
+def _apply_small_jitter_per_shot(base_sel, eps_t: float, eps_tau: float, rng_loc):
+    """
+    给同机 3 发分别加小抖动，然后**投影**回“同机 1s 间隔”可行域（尽量小改动）。
+    """
+    cand = copy.deepcopy(base_sel)
+    by = _group_by_uav(cand)
+    for u,lst in by.items():
+        # 1) 独立小扰动
+        for c in lst:
+            td = clip(float(c["t_drop"]) + float(rng_loc.uniform(-eps_t,  eps_t)), 0.0, 60.0)
+            ta = clip(float(c["tau"])    + float(rng_loc.uniform(-eps_tau, eps_tau)), 0.2, 12.0)
+            c["t_drop"]  = td
+            c["tau"]     = ta
+            c["t_burst"] = td + ta
+        # 2) 投影：修正到“最接近且相邻差≥MIN_DROP_GAP”的序列
+        lst.sort(key=lambda x:x["t_drop"])
+        # 先前向保证间隔
+        for i in range(1, len(lst)):
+            if lst[i]["t_drop"] < lst[i-1]["t_drop"] + MIN_DROP_GAP:
+                lst[i]["t_drop"] = min(60.0, lst[i-1]["t_drop"] + MIN_DROP_GAP)
+        # 若超界，后向压回区间
+        if lst and lst[-1]["t_drop"] > 60.0:
+            lst[-1]["t_drop"] = 60.0
+        for i in reversed(range(len(lst)-1)):
+            hi = lst[i+1]["t_drop"] - MIN_DROP_GAP
+            if lst[i]["t_drop"] > hi:
+                lst[i]["t_drop"] = max(0.0, hi)
+        for c in lst:
+            c["t_burst"] = float(c["t_drop"]) + float(c["tau"])
+    return cand
+
+def neighborhood_validate_best(ans,
+                               n_samples: int = 100,
+                               eps_t: float = 0.30,     # 每架统一平移的时间半径（秒）
+                               eps_tau: float = 0.20,   # 每架统一平移的tau半径（秒）
+                               ratio_per_shot_jitter: float = 0.25,  # 25% 样本对单发做微抖动 + 投影
+                               dt: float = DT_STEP,
+                               N_ANG: int = 48, N_Z: int = 9, INCLUDE_SIDE: bool = True,
+                               seed: int = 20250):
+    """
+    只在“当前最优解”附近采样 n_samples 组，严格保持锁定(θ,v)和同机1s间隔。
+    - 75% 样本：同机 3 发统一平移（最贴近“局部邻域”含义）
+    - 25% 样本：对每发小抖动，再投影回可行域
+    """
+    rng_loc = np.random.default_rng(seed)
+    base_sel = _ans_to_internal_selected(ans["selected"])
+    base_cov, _, _ = _recompute_cover_L1(base_sel, dt, N_ANG, N_Z, INCLUDE_SIDE)
+
+    covers = []
+    better = 0
+    best_improve = (-1e9, None)  # (cov, sample_idx)
+    for k in range(n_samples):
+        if rng_loc.random() < ratio_per_shot_jitter:
+            cand = _apply_small_jitter_per_shot(base_sel, eps_t, eps_tau, rng_loc)
+        else:
+            cand = _apply_uniform_shift_per_uav(base_sel, eps_t, eps_tau, rng_loc)
+        cov, _, _ = _recompute_cover_L1(cand, dt, N_ANG, N_Z, INCLUDE_SIDE)
+        covers.append(cov)
+        if cov > base_cov + 1e-9:
+            better += 1
+        if cov > best_improve[0]:
+            best_improve = (cov, k)
+
+    print("\n[邻域检验（最优解周围）]")
+    print(f"  基线覆盖(L1): {base_cov:.3f} s")
+    print(f"  邻域半径: eps_t={eps_t:.2f}s, eps_tau={eps_tau:.2f}s, 样本数={n_samples}")
+    print(f"  覆盖统计: mean={np.mean(covers):.3f}, median={np.median(covers):.3f}, "
+          f"max={np.max(covers):.3f}, min={np.min(covers):.3f}")
+    print(f"  超过基线的比例: {better}/{n_samples} = {better/n_samples:.2%}")
+    if best_improve[0] > base_cov:
+        print(f"  最佳样本提升: +{(best_improve[0]-base_cov):.3f} s (绝对覆盖 {best_improve[0]:.3f})")
+    else:
+        print("  邻域内未发现比基线更好的样本。")
+    return {
+        "base": base_cov,
+        "covers": covers,
+        "better_count": better,
+        "best_cov": best_improve[0]
+    }
+
+# -------------------------
+# 示例：主程序
+# -------------------------
 if __name__ == "__main__":
-    ans = solve_q5(dt_step=DT_STEP, do_polish_L1=True,
-                   heading_tol_deg=HEADING_TOL_DEG, speed_tol=SPEED_TOL)
-
+    # 你的求解
+    ans = solve_q5(
+        dt_step=DT_STEP,
+        do_polish_L1=True,
+        do_global_SA=True,
+        heading_tol_deg=HEADING_TOL_DEG,
+        speed_tol=SPEED_TOL
+    )
     print("\n[Q5 | 结果概览]")
     for k_, v in ans.items():
         if k_ != "rows":
@@ -771,3 +1107,23 @@ if __name__ == "__main__":
 
     print("\n[Q5 | 报表] 无人机×烟幕投放×导弹干扰明细（12列，含零遮蔽行）：")
     print_report_rows(ans["rows"])
+
+    # 一键验证（100 组随机 + 稳健性 + 扰动曲线）
+    validate_q5(ans,
+                n_trials=100,
+                local_sigma_t=0.6,
+                local_sigma_tau_rel=0.30,
+                dt_list=(0.010,0.015,0.020,0.030),
+                NANG_list=(24,48,96),
+                NZ_list=(5,9,13),
+                curve_sig_t=(0.0,0.2,0.4,0.6,0.8,1.0),
+                curve_reps=30)
+
+    # 仅在最优解邻域内取 100 组点验证（默认 eps_t=0.30s / eps_tau=0.20s）
+    neighborhood_validate_best(ans,
+                               n_samples=100,
+                               eps_t=0.30,
+                               eps_tau=0.20,
+                               ratio_per_shot_jitter=0.25,
+                               dt=DT_STEP, N_ANG=48, N_Z=9, INCLUDE_SIDE=True,
+                               seed=20250)

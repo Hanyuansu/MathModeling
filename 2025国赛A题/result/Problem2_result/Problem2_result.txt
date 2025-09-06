@@ -1,0 +1,25 @@
+[Q2 | L1] 最优解：
+   strategy : L1
+   theta_deg : 7.875253809354123
+   v_u_mps : 103.36453786935911
+   t_drop_s : 0.0
+   tau_s : 0.8122780258028679
+   t_burst_s : 0.8122780258028679
+   burst_point_m : (17883.168886617666, 11.504026397093275, 1796.7637026251532)
+   cover_total_s : 5.040000000000001
+   cover_intervals_s : [(0.8522780258028679, 5.892278025802868)]
+   cover_intervals_pretty : [(0.852, 5.892)]
+   config : {'dt_L0': 0.01, 'dt_L1': 0.02, 'N_ANG': 48, 'N_Z': 9, 'INCLUDE_SIDE': True, 'swarm_size': 64, 'iters': 120, 'stage2_swarm': 48, 'stage2_iters': 80}
+
+[Q2 | two_stage] 最优解：
+   strategy : two_stage
+   theta_deg : 7.374506365477594
+   v_u_mps : 98.85283623880619
+   t_drop_s : 0.025903266051691094
+   tau_s : 0.8431654639833148
+   t_burst_s : 0.869068730035006
+   burst_point_m : (17885.19929400351, 11.026909811509137, 1796.512898161696)
+   cover_total_s : 5.0600000000000005
+   cover_intervals_s : [(0.869068730035006, 5.929068730035007)]
+   cover_intervals_pretty : [(0.869, 5.929)]
+   config : {'dt_L0': 0.01, 'dt_L1': 0.02, 'N_ANG': 48, 'N_Z': 9, 'INCLUDE_SIDE': True, 'swarm_size': 64, 'iters': 120, 'stage2_swarm': 48, 'stage2_iters': 80}
