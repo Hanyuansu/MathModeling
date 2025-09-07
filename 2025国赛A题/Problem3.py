@@ -668,6 +668,82 @@ def print_q3_report_table(ans: Dict[str, Any]):
               f"{r_drop[0]:.3f}\t{r_drop[1]:.3f}\t{r_drop[2]:.3f}\t"
               f"{s_burst[0]:.3f}\t{s_burst[1]:.3f}\t{s_burst[2]:.3f}\t"
               f"{eff_time:.3f}")
+import os
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+plt.rcParams['font.family'] = 'SimHei'
+plt.rcParams['axes.unicode_minus'] = False
+def plot_cover_timeline_q3(
+    intervals,
+    save_path="result/Problem3_result/遮蔽时长.png",
+    title="M1  总遮蔽时长=6.16 s",
+    *,
+    figsize=(8.6, 2.0),   # 与第一问相同比例
+    bar_height=0.14,      # 条带粗细（0~1）
+    dpi=200,
+    pad_ratio=0.035,      # 两端留白比例（仅影响坐标轴，不影响灰条长度）
+    tlim=None,            # ← 新增：灰条/横轴显示范围 (t0, t1)
+    window_extra=0.0      # ← 或者给灰条在区间两端额外扩展的秒数（若未设置 tlim）
+):
+    """第三问时间覆盖图（灰=有效窗口，红=遮蔽段），第一问同款比例。"""
+    # 1) 清洗区间为 float
+    intervals = [(float(a), float(b)) for a, b in intervals if float(b) > float(a)]
+    if not intervals:
+        raise ValueError("intervals 为空或非法。")
+
+    # 2) 决定灰条与横轴范围
+    t0 = min(a for a, _ in intervals)
+    t1 = max(b for _, b in intervals)
+    if tlim is not None:
+        g0, g1 = float(tlim[0]), float(tlim[1])    # 灰条范围
+    else:
+        g0, g1 = t0 - float(window_extra), t1 + float(window_extra)
+    if g1 <= g0:
+        g1 = g0 + 1.0
+    Lg = g1 - g0
+    pad = Lg * pad_ratio
+
+    # 3) 画图（矩形条精确控制粗细）
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi, constrained_layout=True)
+    y0 = 0.5 - bar_height / 2.0
+
+    # 灰条：有效窗口
+    ax.add_patch(Rectangle((g0, y0), Lg, bar_height,
+                           facecolor="#d9d9d9", edgecolor="none", zorder=1, label="有效窗口"))
+
+    # 红条：遮蔽段
+    first = True
+    for a, b in intervals:
+        ax.add_patch(Rectangle((a, y0), b - a, bar_height,
+                               facecolor="#C23B2A", edgecolor="none",
+                               zorder=2, label=("遮蔽段" if first else None)))
+        first = False
+
+    # 坐标轴/标题
+    ax.set_xlim(g0 - pad, g1 + pad)
+    ax.set_ylim(0.0, 1.0)
+    ax.set_yticks([])
+    ax.set_xlabel("t / s", fontsize=12)
+    ax.set_title(title, fontsize=18, pad=10)
+
+    # 图例去重
+    handles, labels = ax.get_legend_handles_labels()
+    uniq = {}
+    for h, lab in zip(handles, labels):
+        if lab and lab not in uniq:
+            uniq[lab] = h
+    ax.legend(uniq.values(), uniq.keys(), loc="upper right", fontsize=10, frameon=True)
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        fig.savefig(save_path, bbox_inches="tight", dpi=dpi)
+        print(f"[FIG] 已保存：{save_path}")
+    else:
+        plt.show()
+    plt.close(fig)
+import numpy as np
+intervals_q3 = [(np.float64(1.2), np.float64(7.36))]
+
 
 # =========================
 # 主程序（可直接运行）
@@ -698,6 +774,11 @@ if __name__ == "__main__":
     # 4) 可选：全局/局部随机健壮性检查（默认用 L1 评估，包含 PTS）
     randomized_check(n_samples=100, eval_strategy="L1", around_solution=None, seed=2025)
     randomized_check(n_samples=100, eval_strategy="L1", around_solution=ans_2s, seed=2026)
+
+    plot_cover_timeline_q3(intervals_q3,
+                           title="M1  总遮蔽时长=6.16 s",
+                           save_path="result/Problem2_result/遮蔽时长.png",
+                           window_extra=0.2)
 
 
 

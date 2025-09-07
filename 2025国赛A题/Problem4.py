@@ -1,42 +1,21 @@
-# -*- coding: utf-8 -*-
-"""
-Q4（图论法，三策略 + “FY1 固定”降维版）
-—— 仅针对“固定 FY1 策略”的模型检验：一致性、DUAL 一致性、步长收敛、旋转不变性
-
-说明：
-  1) 保留通用求解器 solve_q4_graph（L0/L1/DUAL），以及“FY1 固定版”求解器 solve_q4_graph_fixed_fy1
-  2) 新增 run_all_q4_checks_fixed(...)：只对“固定 FY1”场景做四类检验
-       - [check] 基本求解 + 一致性（L0 或 L1）
-       - [check] DUAL 一致性（L0→L1 复评分）
-       - [check] 时间步长收敛（DUAL）
-       - [check] 旋转不变性（DUAL，旋转场景与 FY1 航向）
-"""
-
 import math
 import random
 import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 from itertools import permutations
 
-# =========================
-# 一、常量与场景（按题面）
-# =========================
+g = 9.81
+VM = 300.0
+V_SINK = 3.0
+R_SMOKE = 10.0
+T_EFFECT = 20.0
 
-g = 9.81                 # 重力加速度 (m/s^2)
-VM = 300.0               # 导弹速度 (m/s)：指向假目标(原点)的匀速直线
-V_SINK = 3.0             # 云团下沉速度 (m/s)
-R_SMOKE = 10.0           # 云团有效半径 (m)
-T_EFFECT = 20.0          # 起爆后有效时间 (s)
 
-# 真目标：圆柱（半径7m、高10m），下底面圆心(0,200,0)
 R_TAR, H_TAR = 7.0, 10.0
 CYL_CENTER = np.array([0.0, 200.0, 0.0], dtype=float)
-P_TARGET = np.array([0.0, 200.0, 5.0], dtype=float)  # L0 代表点（圆柱几何中心）
-
-# 导弹（以 M1 为例）
+P_TARGET = np.array([0.0, 200.0, 5.0], dtype=float)
 M0 = np.array([20000.0, 0.0, 2000.0], dtype=float)
 
-# 三架无人机初始（FY1/FY2/FY3）
 U0_FY1 = np.array([17800.0,     0.0, 1800.0], dtype=float)
 U0_FY2 = np.array([12000.0,  1400.0, 1400.0], dtype=float)
 U0_FY3 = np.array([ 6000.0, -3000.0,  700.0], dtype=float)
@@ -47,20 +26,16 @@ UAVS = [
 ]
 
 def missile_hit_time(m0: np.ndarray) -> float:
-    """导弹到达原点的时刻：T_hit = ||m0|| / VM（用于截断积分上限）"""
     return float(np.linalg.norm(m0) / VM)
 
 T_HIT = missile_hit_time(M0)
 
-# 角度显示归一化：[0,360)
+# 角度显示归一化
 def deg360(theta_rad: float) -> float:
     d = math.degrees(theta_rad)
     d = (d % 360.0 + 360.0) % 360.0
     return 0.0 if abs(d-360.0) < 1e-9 else d
 
-# =========================
-# 二、运动学与几何（L0/L1 判定所需）
-# =========================
 
 def unit(v: np.ndarray) -> np.ndarray:
     n = float(np.linalg.norm(v))
@@ -71,12 +46,10 @@ def missile_pos(m0: np.ndarray, t: float) -> np.ndarray:
     return m0 + VM * d * t
 
 def uav_pos(u0: np.ndarray, theta: float, v_u: float, t: float) -> np.ndarray:
-    """无人机：等高度直线匀速；theta 为航向角（弧度）"""
     hx, hy = math.cos(theta), math.sin(theta)
     return np.array([u0[0] + v_u * hx * t, u0[1] + v_u * hy * t, u0[2]], dtype=float)
 
 def burst_point(u0: np.ndarray, theta: float, v_u: float, t_drop: float, tau: float) -> np.ndarray:
-    """起爆点（球心初值）= 投放点 + 水平惯性位移 + 自由落体位移"""
     hx, hy = math.cos(theta), math.sin(theta)
     r_drop = uav_pos(u0, theta, v_u, t_drop)
     horiz  = np.array([v_u * hx * tau, v_u * hy * tau, 0.0], dtype=float)
@@ -84,12 +57,10 @@ def burst_point(u0: np.ndarray, theta: float, v_u: float, t_drop: float, tau: fl
     return r_drop + horiz + vert
 
 def smoke_center_after_burst(s_burst: np.ndarray, t: float, t_burst: float) -> np.ndarray:
-    """起爆后云团球心：以 3 m/s 匀速下沉"""
     dz = -V_SINK * max(0.0, t - t_burst)
     return s_burst + np.array([0.0, 0.0, dz], dtype=float)
 
 def point_to_segment_dist(P: np.ndarray, Q: np.ndarray, X: np.ndarray) -> float:
-    """点X到线段PQ的最小距离，用于球-线段相交判定"""
     v = Q - P
     vv = float(np.dot(v, v))
     if vv == 0.0:
@@ -100,7 +71,6 @@ def point_to_segment_dist(P: np.ndarray, Q: np.ndarray, X: np.ndarray) -> float:
     return float(np.linalg.norm(X - Y))
 
 def covered_L0_at_time(m0, p_target, s_burst, t_burst, t) -> bool:
-    """L0：以圆柱中心点为代表视轴，球-线段相交判定"""
     m_t = missile_pos(m0, t)
     s_t = smoke_center_after_burst(s_burst, t, t_burst)
     return (point_to_segment_dist(p_target, m_t, s_t) <= R_SMOKE)
@@ -108,7 +78,6 @@ def covered_L0_at_time(m0, p_target, s_burst, t_burst, t) -> bool:
 def clip(x, lo, hi):
     return lo if x < lo else (hi if x > hi else x)
 
-# ===== L1：圆柱采样与向量化判定 =====
 
 def cyl_points_top_bottom(N_ang: int = 48) -> np.ndarray:
     cx, cy, cz = CYL_CENTER
@@ -130,18 +99,16 @@ def cyl_points_side(N_ang: int = 48, N_Z: int = 9) -> np.ndarray:
     return np.array(pts, dtype=float)
 
 def build_cylinder_samples(N_ang=48, N_z=9, include_side=True) -> np.ndarray:
-    """构建圆柱表面的采样点集（上下圆面 + 可选侧壁）"""
     pts = [cyl_points_top_bottom(N_ang)]
     if include_side:
         pts.append(cyl_points_side(N_ang, N_z))
     return np.concatenate(pts, axis=0)
 
 def covered_L1_at_time_vectorized(m0, s_burst, t_burst, t, PTS) -> bool:
-    """L1：向量化判定任一点是否被遮蔽（对所有采样点 OR）"""
     m_t = missile_pos(m0, t)
     s_t = smoke_center_after_burst(s_burst, t, t_burst)
-    v = m_t - PTS            # (N,3)
-    w = s_t - PTS            # (N,3)
+    v = m_t - PTS
+    w = s_t - PTS
     vv = np.sum(v * v, axis=1)
     alpha = np.divide(np.sum(w * v, axis=1), vv, out=np.zeros_like(vv), where=vv > 0.0)
     alpha = np.clip(alpha, 0.0, 1.0)
@@ -149,9 +116,8 @@ def covered_L1_at_time_vectorized(m0, s_burst, t_burst, t, PTS) -> bool:
     dist = np.linalg.norm(s_t - Y, axis=1)
     return bool(np.any(dist <= R_SMOKE))
 
-# =========================
-# 三、图论：候选生成 + 掩码 + 贪心 + 兜底
-# =========================
+
+# 图论：候选生成 + 掩码 + 贪心 + 兜底
 
 def _time_grid(dt: float = 0.02) -> np.ndarray:
     return np.arange(0.0, T_HIT + 1e-12, dt)
@@ -159,10 +125,6 @@ def _time_grid(dt: float = 0.02) -> np.ndarray:
 def _candidate_from_anchor(u0: np.ndarray, frac: float, alpha: float, tau_mult: float, clamp_eps: float = 0.10):
     """
     几何锚点生成单个候选（θ, v, t_drop, τ）
-      - t_b = frac * min(60, T_HIT-2)，视线锚点 Y = P + alpha*(m(t_b)-P)
-      - θ 指向 Y_xy，v 使 t_b 时刻到达 Y_xy（t_drop + τ ≈ t_b）
-      - 竖直对齐：u0_z - 0.5 g τ^2 ≈ Y_z → τ_base
-      - τ = tau_mult * τ_base，裁剪到 [0.2, min(12, t_b - clamp_eps)]
     """
     t_b = clip(frac * min(60.0, T_HIT - 2.0), 0.5, 59.5)
     m_tb = missile_pos(M0, t_b)
@@ -239,10 +201,7 @@ def build_candidates_q4(
     mask_mode: str = 'L0',              # 'L0' | 'L1'
     PTS: Optional[np.ndarray] = None     # L1时必需
 ) -> Tuple[List[Dict[str, Any]], np.ndarray]:
-    """
-    为每个 UAV 生成候选并计算遮蔽掩码（按 L0 或 L1）
-    返回：候选列表 + 时间网格
-    """
+
     tgrid = _time_grid(dt_mask)
     all_cands = []
     for uav_idx in range(3):
@@ -276,7 +235,7 @@ def remask_candidates(
     dt_mask: float,
     PTS: Optional[np.ndarray] = None
 ) -> List[Dict[str, Any]]:
-    """把候选重新用指定模式打分（L0→L1 用）"""
+    """把候选重新用指定模式打分"""
     out = []
     for c in candidates:
         u = c["uav"]; th, v, td, ta = c["theta"], c["v"], c["t_drop"], c["tau"]
@@ -295,7 +254,7 @@ def remask_candidates(
         out.append(c2)
     return out
 
-# ---------- 兜底：寻找最大未覆盖时间空档 ----------
+# 兜底：寻找最大未覆盖时间空档
 def _largest_gap(mask: np.ndarray, tgrid: np.ndarray) -> Tuple[float, float]:
     if len(tgrid) < 2:
         return 0.0, 0.0
@@ -353,14 +312,14 @@ def _synthesize_and_polish_for_gap(uav_idx: int, gap_center_t: float,
                             best = c1
     return best
 
-# ---------- 选择：每个 UAV 恰好选 1 ----------
+# 每个 UAV 恰好选 1
 def select_exact_one_per_uav(
     candidates: List[Dict[str, Any]],
     tgrid: np.ndarray,
     mask_mode: str = 'L0',
     PTS: Optional[np.ndarray] = None
 ) -> Tuple[List[Dict[str, Any]], float, np.ndarray]:
-    """分区拟阵 + 兜底；保证每个 UAV 选中 1 个候选"""
+    """分区拟阵 + 兜底"""
     groups = {0: [], 1: [], 2: []}
     for c in candidates:
         groups[c["uav"]].append(c)
@@ -400,7 +359,6 @@ def select_exact_one_per_uav(
         return [], 0.0, np.zeros_like(tgrid, dtype=bool)
     return best_sol, best_score, best_mask
 
-# ---------- 备用：至多 1 / UAV，最多 3 个 ----------
 def greedy_partition_matroid_max_coverage(
     candidates: List[Dict[str, Any]],
     tgrid: np.ndarray,
@@ -449,23 +407,18 @@ def _mask_to_intervals(mask: np.ndarray, tgrid: np.ndarray) -> List[Tuple[float,
             in_seg = False
     return intervals
 
-# =========================
-# 四、统一求解接口：'L0' / 'L1' / 'DUAL'
-# =========================
 
 def solve_q4_graph(
     strategy: str = 'L0',          # 'L0' | 'L1' | 'DUAL'
     dt_mask: float = 0.015,
-    # 候选池密度（可据算力调小）
+    # 候选池密度
     fracs=(0.12, 0.25, 0.40, 0.55, 0.70, 0.85, 0.92, 0.96, 0.985, 0.995),
     alphas=(0.60, 0.70, 0.80, 0.88, 0.92, 0.96, 0.985),
     taus=(0.55, 0.70, 0.85, 1.00, 1.15, 1.30, 1.50),
     per_uav_keep=28,
-    # L1 采样（在 strategy='L1' 或 'DUAL' 的 L1 阶段生效）
     N_ANG: int = 48, N_Z: int = 9, INCLUDE_SIDE: bool = True,
     # 选择策略
     force_one_per_uav: bool = True,
-    # DUAL 的 L1 阶段对候选再次筛选的每UAV上限（可适当更小以加速）
     dual_per_uav_keep_L1: Optional[int] = None,
     debug: bool = False
 ) -> Dict[str, Any]:
@@ -474,12 +427,11 @@ def solve_q4_graph(
     if mode not in ('L0','L1','DUAL'):
         raise ValueError("strategy 需为 'L0' / 'L1' / 'DUAL'")
 
-    # --- 准备 L1 采样（仅在需要 L1 的策略里构建一次）---#
     PTS = None
     if mode in ('L1','DUAL'):
         PTS = build_cylinder_samples(N_ang=N_ANG, N_z=N_Z, include_side=INCLUDE_SIDE)
 
-    # === A) 单策略：L0 或 L1 ===
+    # 单策略：L0 或 L1
     if mode in ('L0','L1'):
         cands, tgrid = build_candidates_q4(
             fracs=fracs, alphas=alphas, taus=taus,
@@ -526,8 +478,8 @@ def solve_q4_graph(
             "v_u_mps": [round(x, 3) for x in vs],
             "drops_s": [round(x, 3) for x in tds],
             "taus_s":  [round(x, 3) for x in taus_],
-            "uav_names": unames,             # ← 供重建/校验
-            "uav_indices": uidx,             # ← 供重建/校验
+            "uav_names": unames,
+            "uav_indices": uidx,
             "bursts":  bursts,
             "cover_total_s": cover_val,
             "cover_intervals_s": intervals,
@@ -538,9 +490,9 @@ def solve_q4_graph(
             }
         }
 
-    # === B) 双策略：DUAL（L0→L1）===
+    # 双策略
 
-    # 1) 用 L0 快速建池与初筛
+    # 1. 用 L0 快速建池与初筛
     cands_L0, tgrid = build_candidates_q4(
         fracs=fracs, alphas=alphas, taus=taus,
         per_uav_keep=per_uav_keep, dt_mask=dt_mask,
@@ -550,7 +502,7 @@ def solve_q4_graph(
         counts0 = {i: sum(1 for c in cands_L0 if c["uav"]==i) for i in range(3)}
         print("[debug][DUAL] L0 pool per-UAV:", counts0)
 
-    # 2) 对 L0 池“换评估模式”为 L1 并重新打分
+    # 2. 对 L0 池“换评估模式”为 L1 并重新打分
     PTS = build_cylinder_samples(N_ang=N_ANG, N_z=N_Z, include_side=INCLUDE_SIDE)
     cands_L1 = remask_candidates(cands_L0, tgrid, 'L1', dt_mask, PTS=PTS)
     # 截断每UAV数量
@@ -566,7 +518,7 @@ def solve_q4_graph(
         counts1 = {i: sum(1 for c in cands_L1_trim if c["uav"]==i) for i in range(3)}
         print("[debug][DUAL] L1 re-score pool per-UAV:", counts1)
 
-    # 3) 在 L1 掩码下正式选择（含 gap 定制兜底）
+    # 3. 在 L1 掩码下正式选择
     if force_one_per_uav:
         picked, cover_val, union_mask = select_exact_one_per_uav(cands_L1_trim, tgrid, mask_mode='L1', PTS=PTS)
     else:
@@ -616,17 +568,9 @@ def solve_q4_graph(
         }
     }
 
-# =========================
-# 五、模型检验/复建通用工具
-# =========================
-
 def _reconstruct_union_from_ans(ans: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
     """
     用 ans 返回的参数重建并集掩码，作为一致性校验依据。
-    依赖字段：
-      - theta_deg, v_u_mps, drops_s, taus_s, uav_indices
-      - config.dt_mask (+ 若 L1/DUAL 则还要 N_ANG/N_Z/INCLUDE_SIDE)
-      - strategy
     """
     cfg = ans.get("config", {})
     dt = float(cfg.get("dt_mask", 0.015))
@@ -634,7 +578,7 @@ def _reconstruct_union_from_ans(ans: Dict[str, Any]) -> Tuple[np.ndarray, np.nda
     strategy = str(ans.get("strategy", "L0")).upper()
     mode = 'L1' if ('L1' in strategy) else 'L0'
 
-    # 构建 PTS（若 L1）
+    # 构建 PTS
     PTS = None
     if mode == 'L1':
         PTS = build_cylinder_samples(
@@ -643,7 +587,6 @@ def _reconstruct_union_from_ans(ans: Dict[str, Any]) -> Tuple[np.ndarray, np.nda
             include_side=bool(cfg.get("INCLUDE_SIDE", True))
         )
 
-    # 取数组（保持顺序一一对应）
     uidx = ans.get("uav_indices", None)
     if uidx is None:
         uidx = [0, 1, 2]
@@ -675,11 +618,6 @@ def _intervals_from_mask(mask: np.ndarray, tgrid: np.ndarray) -> List[Tuple[floa
     return _mask_to_intervals(mask, tgrid)
 
 def validate_q4_solution(ans: Dict[str, Any], verbose: bool = True, tol_s: float = 0.45):
-    """
-    校验：
-      1) 由返回参数重建的并集覆盖时长与 ans['cover_total_s'] 接近
-      2) 由掩码恢复的区间与 ans['cover_intervals_s'] 大体一致（离散步长允许±dt）
-    """
     union, tgrid = _reconstruct_union_from_ans(ans)
     dt = float(tgrid[1]-tgrid[0])
     cover = float(union.sum()*dt)
@@ -693,25 +631,16 @@ def validate_q4_solution(ans: Dict[str, Any], verbose: bool = True, tol_s: float
     if verbose:
         print(f"[check] intervals reconstructed: {inter}")
         print(f"[check] intervals in ans      : {inter_ans}")
-    # 宽松比较：区间个数一致，端点差在 2*dt 内
     assert len(inter) == len(inter_ans), "区间数量不一致"
     for (a,b), (A,B) in zip(inter, inter_ans):
         assert abs(a-A) <= 2.5*dt and abs(b-B) <= 2.5*dt, "区间端点不一致（离散误差之外）"
 
-# =========================
-# 六、Q4 结果“明细表”（可选）
-# =========================
 
 def _mode_from_strategy_str(strategy_str: str) -> str:
-    """从返回的 strategy 文本判断掩码评估模式：包含 'L1' 则用 L1，否则用 L0。"""
     s = (strategy_str or "").upper()
     return 'L1' if ('L1' in s) else 'L0'
 
 def summarize_solution_rows(ans: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    输入：solve_q4_graph(...) 或 solve_q4_graph_fixed_fy1(...) 的返回字典 ans
-    输出：每架 UAV 对应的一行信息（用于打印或导出）
-    """
     cfg = ans.get("config", {})
     dt = float(cfg.get("dt_mask", 0.02))
     tgrid = _time_grid(dt)
@@ -762,7 +691,6 @@ def summarize_solution_rows(ans: Dict[str, Any]) -> List[Dict[str, Any]]:
     return rows
 
 def print_q4_report_table(ans: Dict[str, Any]):
-    """中文列名明细表"""
     rows = summarize_solution_rows(ans)
     header = (
         "无人机编号\t"
@@ -791,9 +719,6 @@ def print_q4_report_table(ans: Dict[str, Any]):
             f"{r['eff_time_s']:.3f}"
         )
 
-# =========================
-# 七、FY1 已知最优 → 两机优化（降维版）
-# =========================
 
 def _intervals_to_mask(intervals, tgrid):
     mask = np.zeros_like(tgrid, dtype=bool)
@@ -814,9 +739,9 @@ def _mask_by_mode_for_params(uav_idx, theta_deg, v, t_drop, tau, tgrid, mode, PT
         return _candidate_mask_L0(uav_idx, th, v, t_drop, tau, tgrid)
 
 def _pick_best_pair_given_fixed_union(
-    groups,               # {uav_idx: [candidates...]} 仅含剩余两机
+    groups,
     tgrid,
-    union_fixed           # FY1 的固定掩码
+    union_fixed
 ):
     dt = float(tgrid[1] - tgrid[0])
     u_left = sorted(groups.keys())
@@ -839,7 +764,7 @@ def _pick_best_pair_given_fixed_union(
     return best, best_cover, best_union
 
 def solve_q4_graph_fixed_fy1(
-    strategy: str = 'DUAL',          # 'L0' | 'L1' | 'DUAL'
+    strategy: str = 'DUAL',
     dt_mask: float = 0.02,
     fracs=(0.12, 0.25, 0.40, 0.55, 0.70, 0.85, 0.92, 0.96, 0.985, 0.995),
     alphas=(0.60, 0.70, 0.80, 0.88, 0.92, 0.96, 0.985),
@@ -848,28 +773,21 @@ def solve_q4_graph_fixed_fy1(
     dual_per_uav_keep_L1: Optional[int] = None,
     N_ANG: int = 48, N_Z: int = 9, INCLUDE_SIDE: bool = True,
     debug: bool = False,
-    # —— FY1 固定解（建议用两阶段的参数；也可只给区间）
     fy1_theta_deg: Optional[float] = None,
     fy1_v: Optional[float] = None,
     fy1_t_drop: Optional[float] = None,
     fy1_tau: Optional[float] = None,
     fy1_intervals: Optional[List[Tuple[float, float]]] = None
 ) -> Dict[str, Any]:
-    """
-    固定 FY1 的遮蔽（由参数或区间给出），只优化 FY2、FY3 的组合以最大化并集时长。
-    支持 L0/L1/DUAL 三策略。
-    """
     mode = strategy.upper()
     if mode not in ('L0','L1','DUAL'):
         raise ValueError("strategy 需为 'L0' / 'L1' / 'DUAL'")
 
-    # 时间网格与（必要时）L1 采样
     tgrid = _time_grid(dt_mask)
     PTS = None
     if mode in ('L1','DUAL'):
         PTS = build_cylinder_samples(N_ang=N_ANG, N_z=N_Z, include_side=INCLUDE_SIDE)
 
-    # ===== 1) 构造 FY1 的固定掩码 union_fixed =====
     have_params = (fy1_theta_deg is not None and fy1_v is not None and
                    fy1_t_drop is not None and fy1_tau is not None)
     union_fixed = np.zeros_like(tgrid, dtype=bool)
@@ -907,7 +825,6 @@ def solve_q4_graph_fixed_fy1(
     else:
         raise ValueError("请至少提供 FY1 的参数 (theta/v/t_drop/tau) 或遮蔽区间 intervals")
 
-    # ===== 2) 为 FY2/FY3 生成候选池（按策略）并重评分 =====
     if mode in ('L0','L1'):
         cands, _ = build_candidates_q4(
             fracs=fracs, alphas=alphas, taus=taus,
@@ -919,7 +836,7 @@ def solve_q4_graph_fixed_fy1(
             counts_23 = {i: sum(1 for cc in cands if cc["uav"]==i) for i in (1,2)}
             print(f"[debug][fixed FY1] mask_mode={mode}, per-UAV nonzero candidates (all): {counts_all}")
             print(f"[debug][fixed FY1] using FY2/FY3: {counts_23}")
-    else:  # DUAL：L0 建池 → L1 重打分
+    else:
         cands_L0, _ = build_candidates_q4(
             fracs=fracs, alphas=alphas, taus=taus,
             per_uav_keep=per_uav_keep, dt_mask=dt_mask,
@@ -942,7 +859,6 @@ def solve_q4_graph_fixed_fy1(
             counts1 = {i: sum(1 for cc in cands if cc["uav"]==i) for i in range(3)}
             print("[debug][fixed FY1][DUAL] L1 re-score pool per-UAV:", counts1)
 
-    # 仅保留 FY2/FY3
     groups = {1:[], 2:[]}
     for c in cands:
         if c["uav"] in (1,2):
@@ -951,10 +867,8 @@ def solve_q4_graph_fixed_fy1(
     if debug:
         print("[debug][fixed FY1] pool sizes (FY2/FY3):", {u:len(groups[u]) for u in (1,2)})
 
-    # ===== 3) 在 FY1 掩码已固定条件下，枚举 FY2×FY3 取最优 =====
     (c2, c3), cover_total, union_mask = _pick_best_pair_given_fixed_union(groups, tgrid, union_fixed)
 
-    # ===== 4) 汇总答案（顺序按 FY1, FY2, FY3）=====
     ths = [fy1_row_for_report["theta_deg"], deg360(c2["theta"]), deg360(c3["theta"])]
     vs  = [fy1_row_for_report["v"], c2["v"], c3["v"]]
     tds = [fy1_t_drop if have_params else float('nan'), c2["t_drop"], c3["t_drop"]]
@@ -1006,15 +920,10 @@ def solve_q4_graph_fixed_fy1(
     }
     return ans
 
-# =========================
-# 八、仅“固定 FY1 策略”的模型检验
-# =========================
-
 def convergence_test_dt_fixed(fy1_theta_deg, fy1_v, fy1_t_drop, fy1_tau,
                               strategy='DUAL', dts=(0.04, 0.02, 0.015, 0.01),
                               per_uav_keep=24, dual_per_uav_keep_L1=24,
                               N_ANG=48, N_Z=9, INCLUDE_SIDE=True):
-    """步长收敛（固定 FY1）"""
     rows = []
     for dt in dts:
         ans = solve_q4_graph_fixed_fy1(
@@ -1031,13 +940,11 @@ def rotation_invariance_test_fixed(fy1_theta_deg, fy1_v, fy1_t_drop, fy1_tau,
                                    strategy='DUAL', dt_mask=0.02,
                                    per_uav_keep=24, dual_per_uav_keep_L1=24,
                                    N_ANG=48, N_Z=9, INCLUDE_SIDE=True):
-    """旋转不变性（固定 FY1）：旋转场景，同时 FY1 航向角 +angle"""
     def rotz(vec, ang_rad):
         c,s = math.cos(ang_rad), math.sin(ang_rad)
         x,y,z = vec[0], vec[1], vec[2]
         return np.array([c*x - s*y, s*x + c*y, z], dtype=float)
 
-    # 备份原始几何
     M0_bak = M0.copy()
     U_bak = [u["U0"].copy() for u in UAVS]
     P_bak = P_TARGET.copy()
@@ -1046,13 +953,11 @@ def rotation_invariance_test_fixed(fy1_theta_deg, fy1_v, fy1_t_drop, fy1_tau,
     covs=[]
     for ang in angles_deg:
         rad = math.radians(ang)
-        # 旋转场景
         M0[:] = rotz(M0_bak, rad)
         for i in range(3):
             UAVS[i]["U0"][:] = rotz(U_bak[i], rad)
         P_TARGET[:] = rotz(P_bak, rad)
         CYL_CENTER[:] = rotz(C_bak, rad)
-        # FY1 航向角同步旋转
         ans = solve_q4_graph_fixed_fy1(
             strategy=strategy, dt_mask=dt_mask,
             per_uav_keep=per_uav_keep, dual_per_uav_keep_L1=dual_per_uav_keep_L1,
@@ -1062,7 +967,6 @@ def rotation_invariance_test_fixed(fy1_theta_deg, fy1_v, fy1_t_drop, fy1_tau,
         )
         covs.append(ans["cover_total_s"])
 
-    # 复原
     M0[:] = M0_bak
     for i in range(3):
         UAVS[i]["U0"][:] = U_bak[i]
@@ -1072,20 +976,13 @@ def rotation_invariance_test_fixed(fy1_theta_deg, fy1_v, fy1_t_drop, fy1_tau,
     return list(zip(angles_deg, covs))
 
 def run_all_q4_checks_fixed(
-    # FY1 固定参数（来自你的 two-stage 结果）
     fy1_theta_deg=7.374506365477594,
     fy1_v=98.85283623880619,
     fy1_t_drop=0.025903266051691094,
     fy1_tau=0.8431654639833148,
     fy1_intervals=[(0.869068730035006, 5.929068730035007)]
 ):
-    """
-    仅针对“固定 FY1”的四类检验：
-      - 基本求解 + 一致性（L0）
-      - DUAL 一致性
-      - 时间步长收敛（DUAL）
-      - 旋转不变性（DUAL）
-    """
+
     print("\n[check] 基本求解 + 一致性（FY1 固定，L0）")
     ans_L0_fix = solve_q4_graph_fixed_fy1(
         strategy='L0', dt_mask=0.015,
@@ -1127,11 +1024,8 @@ def run_all_q4_checks_fixed(
         "rotation_rows": rotrows
     }
 
-# =========================
-# 主程序（示例：仅跑“固定 FY1”检验）
-# =========================
+
 if __name__ == "__main__":
-    # —— L0：最快
     ans_L0 = solve_q4_graph(
         strategy='L0',
         dt_mask=0.015,
@@ -1144,12 +1038,11 @@ if __name__ == "__main__":
     print("\n[Q4 | Graph-L0] 结果明细表：")
     print_q4_report_table(ans_L0)
 
-    # —— L1：高保真（计算量更大，建议适度增大 dt_mask 或减少候选）
     ans_L1 = solve_q4_graph(
         strategy='L1',
-        dt_mask=0.02,        # L1 建议 0.02~0.03
+        dt_mask=0.02,
         N_ANG=48, N_Z=9, INCLUDE_SIDE=True,
-        per_uav_keep=24,     # L1 可适当减小以控时
+        per_uav_keep=24,
         debug=True
     )
     print("\n[Q4 | Graph-L1] 最优：")
@@ -1158,12 +1051,11 @@ if __name__ == "__main__":
     print("\n[Q4 | Graph-L1] 结果明细表：")
     print_q4_report_table(ans_L1)
 
-    # —— DUAL：先 L0 建池，后 L1 重打分重选（快 & 稳）
     ans_DUAL = solve_q4_graph(
         strategy='DUAL',
-        dt_mask=0.02,               # DUAL 的 L1 阶段也用到该步长
+        dt_mask=0.02,
         per_uav_keep=28,
-        dual_per_uav_keep_L1=24,    # L1 阶段每UAV保留数量（可再小一点以提速）
+        dual_per_uav_keep_L1=24,
         N_ANG=48, N_Z=9, INCLUDE_SIDE=True,
         debug=True
     )
@@ -1173,7 +1065,6 @@ if __name__ == "__main__":
     print("\n[Q4 | Graph-DUAL] 结果明细表：")
     print_q4_report_table(ans_DUAL)
 
-    # —— FY1 固定：用你 two-stage 的 FY1 最优参数，优化 FY2/FY3（DUAL，最终 L1 评估）
     ans_fixed = solve_q4_graph_fixed_fy1(
         strategy='DUAL',
         dt_mask=0.02,
@@ -1181,12 +1072,10 @@ if __name__ == "__main__":
         dual_per_uav_keep_L1=24,
         N_ANG=48, N_Z=9, INCLUDE_SIDE=True,
         debug=True,
-        # FY1 two-stage 最优参数（你提供的数据）
         fy1_theta_deg=7.374506365477594,
         fy1_v=98.85283623880619,
         fy1_t_drop=0.025903266051691094,
         fy1_tau=0.8431654639833148,
-        # 同时给出 FY1 的遮蔽区间（优化不依赖，但便于参考）
         fy1_intervals=[(0.869068730035006, 5.929068730035007)]
     )
     print("\n[Q4 | Graph-DUAL | FY1 fixed] 最优：")
@@ -1195,9 +1084,11 @@ if __name__ == "__main__":
     print("\n[Q4 | Graph-DUAL | FY1 fixed] 结果明细表：")
     print_q4_report_table(ans_fixed)
 
-    # —— 一致性校验（可选）
+
+    #一致性校验
     print("\n[Q4 | 校验 | FY1 fixed]")
     validate_q4_solution(ans_fixed, verbose=True)
+
     _ = run_all_q4_checks_fixed(
         fy1_theta_deg=7.374506365477594,
         fy1_v=98.85283623880619,

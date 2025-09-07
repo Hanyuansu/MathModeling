@@ -1,36 +1,24 @@
-# -*- coding: utf-8 -*-
-"""
-CUMCM 2025 A题 第1问：遮蔽时长 + 可视化（单文件最终版）
-
-改动要点：
-- 仅保留一个 __main__，避免重复打印
-- 使用 constrained_layout，移除 tight_layout 警告
-- 3D 视图加入“近景 inset”专注目标圆柱与代表球，避免尺度淹没
-"""
-
 import os
 import math
 import numpy as np
 
-# ------------------- 题面常量 -------------------
-g = 9.81            # 重力加速度 (m/s^2)
-VM = 300.0          # 导弹速度 (m/s)
-V_SINK = 3.0        # 云团下沉速度 (m/s)
-R_SMOKE = 10.0      # 云团“有效半径”（中心10m）
-T_EFFECT = 20.0     # 起爆后有效时长 (s)
+# 题面常量
+g = 9.81
+VM = 300.0
+V_SINK = 3.0
+R_SMOKE = 10.0
+T_EFFECT = 20.0
 
-# 目标圆柱（下底面圆心在(0,200,0)）
 R_TAR, H_TAR = 7.0, 10.0
-CYL_CENTER = np.array([0.0, 200.0, 0.0])       # (cx, cy, cz)
-P_CENTER  = np.array([0.0, 200.0, H_TAR/2.0])  # 圆柱几何中心 —— L0 用
+CYL_CENTER = np.array([0.0, 200.0, 0.0])
+P_CENTER  = np.array([0.0, 200.0, H_TAR/2.0])
 
-# 初始位置（题面给定）
+# 初始位置
 M1_0 = np.array([20000.0, 0.0, 2000.0])
 FY1_0 = np.array([17800.0, 0.0, 1800.0])
 
-# 固定动作
-VU = 120.0                                   # FY1 速度 (m/s)
-HEADING = np.array([-1.0, 0.0])              # 朝向假目标(0,0)
+VU = 120.0
+HEADING = np.array([-1.0, 0.0])
 T_DROP = 1.5
 TAU = 3.6
 T_BURST = T_DROP + TAU
@@ -40,11 +28,10 @@ T0 = T_BURST
 T1 = T_BURST + 20.0
 DT = 0.001
 
-# 采样控制
 USE_SIDE = True
 USE_L0 = True
 
-# ------------------- 运动学 -------------------
+# 运动学
 def unit(v: np.ndarray) -> np.ndarray:
     """单位化向量；零向量保持零"""
     n = np.linalg.norm(v)
@@ -62,7 +49,7 @@ def uav_pos(t: float) -> np.ndarray:
                      FY1_0[2]])
 
 def burst_point() -> np.ndarray:
-    """起爆点：投放后 TAU 秒（水平继承无人机速度，竖直自由落体）"""
+    """水平平抛运动，竖直自由落体"""
     r_drop = uav_pos(T_DROP)
     horiz = np.array([VU * HEADING[0] * TAU, VU * HEADING[1] * TAU, 0.0])
     vert  = np.array([0.0, 0.0, -0.5 * g * TAU * TAU])
@@ -117,15 +104,13 @@ if USE_SIDE:
     PTS_L1.append(cyl_points_side(72, 11))
 PTS_L1 = np.concatenate(PTS_L1, axis=0)
 
-# ------------------- 遮蔽判定与积分 -------------------
+# 遮蔽判定与积分
 def covered_L0(t: float) -> bool:
-    """L0：用圆柱几何中心"""
     m = missile_pos(t)
     s = smoke_center(t)
     return point_seg_distance(P_CENTER, m, s) <= R_SMOKE
 
 def covered_L1(t: float) -> bool:
-    """L1：多点采样，任一点被遮蔽即判遮蔽"""
     m = missile_pos(t)
     s = smoke_center(t)
     for p in PTS_L1:
@@ -134,7 +119,7 @@ def covered_L1(t: float) -> bool:
     return False
 
 def integrate_cover(flag_func, t0: float, t1: float, dt: float):
-    """在 [t0,t1] 上积分遮蔽指示，返回(时长, 区间列表)"""
+    """在 [t0,t1] 上积分遮蔽"""
     covered = 0.0
     intervals = []
     t = t0
@@ -155,7 +140,6 @@ def integrate_cover(flag_func, t0: float, t1: float, dt: float):
         intervals.append((seg_start, t1))
     return covered, intervals
 
-# ------------------- 主程序 -------------------
 if __name__ == "__main__":
     # 结果只打印一次
     print(f"Burst time te = {T_BURST:.3f} s")

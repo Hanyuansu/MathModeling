@@ -1,34 +1,31 @@
-# -*- coding: utf-8 -*-
 import os
 import math
 import numpy as np
 
-# ---------- 题面常量 ----------
+# 题面常量
 g = 9.81
 VM = 300.0
 V_SINK = 3.0
 R_SMOKE = 10.0
 T_EFFECT = 20.0
 
-# 圆柱与代表点（L0）
 R_TAR, H_TAR = 7.0, 10.0
 CYL_CENTER = np.array([0.0, 200.0, 0.0])
 P_CENTER   = np.array([0.0, 200.0, H_TAR/2.0])  # 圆柱几何中心作为视轴起点
 
-# 初始状态（示例）
+# 初始状态
 M1_0  = np.array([20000.0, 0.0, 2000.0])
 FY1_0 = np.array([17800.0, 0.0, 1800.0])
 VU       = 120.0
-HEADING  = np.array([-1.0, 0.0])   # 飞机朝向（单位化在下式通过 cos/sin 隐含）
+HEADING  = np.array([-1.0, 0.0])
 T_DROP   = 1.5
 TAU      = 3.6
 T_BURST  = T_DROP + TAU
 
-# 展示窗口（相对起爆时刻）
 T0, T1 = T_BURST, T_BURST + 20.0
 DT = 0.001
 
-# ---------- 运动学 ----------
+# 运动学
 def unit(v):
     n = np.linalg.norm(v)
     return v / n if n > 0 else v
@@ -54,7 +51,7 @@ def smoke_center(t):
     dz = -V_SINK * max(0.0, t - T_BURST)
     return S_BURST + np.array([0.0, 0.0, dz])
 
-# ---------- L0 判定 ----------
+#  L0 判定
 def point_seg_distance(P, Q, X):
     """点X到线段PQ的最小距离"""
     v = Q - P
@@ -86,16 +83,14 @@ def find_intervals_L0(t0, t1, dt):
         intervals.append((a, t1))
     return intervals
 
-# ---------- 画图 ----------
+# 可视化
 def plot_cover_schematic(save_path=None):
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
-    # 中文字体
     plt.rcParams['font.family'] = 'SimHei'
     plt.rcParams['axes.unicode_minus'] = False
 
-    # 选择展示时刻（第一段遮蔽的中点；若无则取最近时刻）
     ts = np.arange(T0, T1 + 1e-12, DT)
     intervals = find_intervals_L0(T0, T1, DT)
     if intervals:
@@ -109,12 +104,10 @@ def plot_cover_schematic(save_path=None):
                 best_d, best_t = d, tt
         t_focus = best_t
 
-    # 焦点量
     m = missile_pos(t_focus)
     s = smoke_center(t_focus)
-    u = unit(m - P_CENTER)                 # 视轴方向（P_CENTER → 导弹）
+    u = unit(m - P_CENTER)
 
-    # 线（无限长）与球的交点参数（只用于分段画线）
     w = P_CENTER - s
     b = 2.0 * float(np.dot(u, w))
     c = float(np.dot(w, w)) - R_SMOKE**2
@@ -132,12 +125,10 @@ def plot_cover_schematic(save_path=None):
     t_foot = float(np.dot(s - P_CENTER, u))
     P_foot = P_CENTER + u * t_foot
 
-    # 作图
     fig = plt.figure(figsize=(8.6, 6.6), constrained_layout=True)
     ax = fig.add_subplot(1,1,1, projection='3d')
     ax.set_title("遮掩示意图")
 
-    # 1) 画完整球体（半透明）
     ugrid = np.linspace(0, 2*np.pi, 80)
     vgrid = np.linspace(0,   np.pi, 40)
     xs = s[0] + R_SMOKE*np.outer(np.cos(ugrid), np.sin(vgrid))
@@ -146,8 +137,6 @@ def plot_cover_schematic(save_path=None):
     ax.plot_surface(xs, ys, zs, rstride=1, cstride=1, linewidth=0.3,
                     alpha=0.25, color='tab:red', edgecolor='k')
 
-    # 2) 视轴：球内实线，球外两端虚线
-    # 取一个展示长度（左右各 2.2R）
     L = 2.2 * R_SMOKE
     if have_intersection:
         # 内段
@@ -167,14 +156,11 @@ def plot_cover_schematic(save_path=None):
         ax.plot([O1[0],O2[0]],[O1[1],O2[1]],[O1[2],O2[2]], 'k--', lw=2.2,
                 label='导弹视轴')
 
-    # 3) 球心与垂足 P + 垂线
     ax.scatter([s[0]],[s[1]],[s[2]], c='tab:red', s=28, label='球心')
     ax.scatter([P_foot[0]],[P_foot[1]],[P_foot[2]], c='k', s=28, label='垂足 P')
     ax.plot([s[0], P_foot[0]],[s[1], P_foot[1]],[s[2], P_foot[2]],
             color='tab:red', lw=2.0)
 
-    # 4) 轴域与等比例（保证“球看起来就是球”）
-    #    取以球心为中心的立方体包围盒，边长按最大跨度统一
     pts = [s, P_foot]
     if have_intersection:
         pts += [P_in, P_out]
@@ -196,9 +182,7 @@ def plot_cover_schematic(save_path=None):
     plt.show()
 
 def plot_cover_timeline(save_path=None, show_intervals_text=False, show_total=True):
-    """
-    L0 遮掩时长图：只画有效窗口与遮掩段；默认不写‘遮掩区间：[...]’。
-    """
+
     import matplotlib.pyplot as plt
 
     intervals = find_intervals_L0(T0, T1, DT)
@@ -213,9 +197,7 @@ def plot_cover_timeline(save_path=None, show_intervals_text=False, show_total=Tr
     ax.set_yticks([])
     ax.set_xlabel("t / s")
 
-    title = "L0 遮掩时长图"
-    if show_total:
-        title += f"（总计 {total_cover:.3f} s）"
+    title = "M1  总遮蔽时长=1.496 s"
     ax.set_title(title)
 
     # 去重图例

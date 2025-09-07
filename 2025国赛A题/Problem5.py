@@ -5,16 +5,13 @@ import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 rng = np.random.default_rng(2024)
 
-# =========================
-# 场景与常量
-# =========================
 g = 9.81
 VM = 300.0
 V_SINK = 3.0
 R_SMOKE = 10.0
 T_EFFECT = 20.0
 
-DT_STEP = 0.015  # L0/L1 同步步长
+DT_STEP = 0.015
 
 R_TAR, H_TAR = 7.0, 10.0
 CYL_CENTER = np.array([0.0, 200.0, 0.0], dtype=float)
@@ -37,32 +34,26 @@ UAVS = [
 BUDGETS = (3, 3, 3, 3, 3)
 MIN_DROP_GAP = 1.0
 
-# 锁定容差（如需严格一致，设 0/0）
 HEADING_TOL_DEG = 2.0
 SPEED_TOL       = 1.5
 
-# 候选采样
 FRACS  = (0.10, 0.18, 0.25, 0.40, 0.55, 0.70, 0.85, 0.92, 0.96, 0.985)
 ALPHAS = (0.60, 0.70, 0.80, 0.88, 0.92, 0.96, 0.985)
 TAUS_MUL = (0.55, 0.70, 0.85, 1.00, 1.15, 1.30)
 PER_UAV_KEEP = 36
 DEDUP_EPS = 0.12
 
-# L1 采样
 N_ANG, N_Z, INCLUDE_SIDE = 48, 9, True
 POLISH_ROUNDS = 1
 
-# 全局 SA 优化（L1 下）
 GLOBAL_SA_ON = True
 SA_ITERS = 2000
-SA_T0    = 0.5          # 初始温度（越大越容易接受变差解）
+SA_T0    = 0.5
 SA_TEND  = 1e-3
-SA_SIG_T = 0.6          # t_drop 建议扰动标准差（秒）
-SA_SIG_A = 0.30         # tau 相对扰动比例（~±30%）
+SA_SIG_T = 0.6
+SA_SIG_A = 0.30
 
-# =========================
-# 基础几何/运动学与判定
-# =========================
+
 def unit(v: np.ndarray) -> np.ndarray:
     n = float(np.linalg.norm(v))
     return v / n if n > 0 else v
@@ -101,13 +92,11 @@ def point_to_segment_dist(P: np.ndarray, Q: np.ndarray, X: np.ndarray) -> float:
 
 def clip(x, lo, hi): return lo if x < lo else (hi if x > hi else x)
 
-# L0 判定：圆柱中心点代表视轴
 def covered_L0_at_time(m0, p_target, s_burst, t_burst, t) -> bool:
     m_t = missile_pos(m0, t)
     s_t = smoke_center_after_burst(s_burst, t, t_burst)
     return (point_to_segment_dist(p_target, m_t, s_t) <= R_SMOKE)
 
-# L1 采样
 def cyl_points_top_bottom(N_ang: int = 48) -> np.ndarray:
     cx, cy, _ = CYL_CENTER; out=[]
     for z in (0.0, H_TAR):
@@ -139,9 +128,6 @@ def covered_L1_at_time_vectorized(m0: np.ndarray, s_burst: np.ndarray, t_burst: 
     dist = np.linalg.norm(s_t - Y, axis=1)
     return bool(np.any(dist <= R_SMOKE))
 
-# =========================
-# 时间网格/掩码/打分
-# =========================
 def _time_grid(T_hit: float, dt: float) -> np.ndarray:
     return np.arange(0.0, T_hit + 1e-12, dt)
 
@@ -192,9 +178,6 @@ def _mask_for_candidate_L1(uav_idx: int, cand, tgrids: Dict[str, np.ndarray], PT
 def _cover_sum(masks: Dict[str, np.ndarray], dt: float) -> float:
     return float(sum(mask.sum() for mask in masks.values()) * dt)
 
-# =========================
-# 候选生成
-# =========================
 def _candidate_from_anchor(u0: np.ndarray, m0: np.ndarray,
                            frac: float, alpha: float, tau_mult: float,
                            clamp_eps: float = 0.10):
@@ -231,7 +214,7 @@ def build_candidates_L0(
                         cand = {"uav": u, "theta": th, "v": v, "t_drop": td, "tau": ta}
                         masks = _mask_for_candidate_L0(u, cand, tgrids)
                         score = _cover_sum(masks, dt)
-                        if score <= 0.0:  # 有效候选
+                        if score <= 0.0:
                             continue
                         cand.update({"mask_by_missile": masks, "score_cover": score, "t_burst": td+ta})
                         local.append(cand)
@@ -247,9 +230,6 @@ def build_candidates_L0(
         all_cands += filtered[:per_uav_keep]
     return all_cands, tgrids
 
-# =========================
-# 约束/增益/工具
-# =========================
 def _angdiff(a: float, b: float) -> float:
     d = abs((a - b + math.pi) % (2*math.pi) - math.pi)
     return d
@@ -277,9 +257,7 @@ def _marginal_gain_cover(cand, union_masks, tgrids, dt):
         gain += float((new.sum() - old.sum()) * dt)
     return gain
 
-# =========================
-# 播种 / 增产 / 贪心 / 补满
-# =========================
+
 def seed_cover_all_missiles(candidates: List[Dict[str,Any]],
                             tgrids: Dict[str,np.ndarray],
                             dt: float,
@@ -439,9 +417,7 @@ def _force_fill_to_15(chosen_list, tgrids_loc, dt_loc):
             used_per_uav[u] += 1
     return chosen_list
 
-# =========================
 # L1 抛光（坐标下降）——保持锁定 & 1s 间隔
-# =========================
 def polish_L1_keep_course(selected: List[Dict[str,Any]],
                           tgrids: Dict[str,np.ndarray],
                           dt_mask: float = DT_STEP,
@@ -500,9 +476,7 @@ def polish_L1_keep_course(selected: List[Dict[str,Any]],
             final_union[nm] = np.logical_or(final_union[nm], c["mask_by_missile"][nm])
     return best, final_union
 
-# =========================
-# ★ L1 全局随机优化（模拟退火 SA）——保持锁定 & 1s 间隔
-# =========================
+#  L1 全局随机优化（模拟退火 SA）——保持锁定 & 1s 间隔
 def global_sa_optimize_L1(selected: List[Dict[str,Any]],
                           tgrids: Dict[str,np.ndarray],
                           dt_mask: float = DT_STEP,
@@ -542,7 +516,7 @@ def global_sa_optimize_L1(selected: List[Dict[str,Any]],
     best = [dict(c) for c in cur]
     best_score = cur_score
 
-    def snap(x):  # 可选：对齐到 dt 网格
+    def snap(x):
         k = round(x / DT_STEP)
         return float(max(0.0, min(60.0, k * DT_STEP)))
 
@@ -551,7 +525,6 @@ def global_sa_optimize_L1(selected: List[Dict[str,Any]],
         c0 = cur[i]
         td0, ta0 = float(c0["t_drop"]), float(c0["tau"])
 
-        # 生成邻域（保持锁定；只改 t_drop/tau）
         trial = dict(c0)
         for _attempt in range(12):
             td = snap(td0 + rng.normal(0.0, sig_t))
@@ -564,9 +537,8 @@ def global_sa_optimize_L1(selected: List[Dict[str,Any]],
             trial = rebuild(trial)
             break
         else:
-            continue  # 没找到满足 1s 间隔的邻域
+            continue
 
-        # 评估新解（全量并集，15 枚规模可接受）
         new_sol = cur[:i] + [trial] + cur[i+1:]
         new_score, _ = score_of(new_sol)
 
@@ -585,9 +557,7 @@ def global_sa_optimize_L1(selected: List[Dict[str,Any]],
             final_union[nm] = np.logical_or(final_union[nm], c["mask_by_missile"][nm])
     return best, final_union
 
-# =========================
-# 报表
-# =========================
+
 def _drop_point(u0: np.ndarray, theta: float, v_u: float, t_drop: float) -> np.ndarray:
     return uav_pos(u0, theta, v_u, t_drop)
 
@@ -660,9 +630,6 @@ def print_report_rows(rows: List[Dict[str,Any]]):
     for r in rows:
         print("\t".join(str(r[h]) for h in headers))
 
-# =========================
-# 主入口：L0→贪心→补满→L1抛光→（可选）L1全局SA
-# =========================
 def solve_q5(
     dt_step: float = DT_STEP,
     do_polish_L1: bool = True,
@@ -693,7 +660,6 @@ def solve_q5(
     assert len(chosen) == sum(BUDGETS), f"[fatal] 只选了 {len(chosen)}/{sum(BUDGETS)}"
 
     mode = "L0 only"
-    # L1 抛光
     tgrids = {m["name"]: _time_grid(missile_hit_time(m["M0"]), dt_step) for m in MISSILES}
     if do_polish_L1:
         chosen, union = polish_L1_keep_course(chosen, tgrids, dt_mask=dt_step,
@@ -869,7 +835,7 @@ def _random_solution_global_like(selected_internal, seed: int = None):
             out.append({"uav": u, "theta": th, "v": v, "t_drop": td, "tau": tau, "t_burst": td+tau})
     return out
 
-# --------- Monte-Carlo 对比 ---------
+
 def monte_carlo_compare(ans, n_trials: int = 100,
                         sigma_t: float = 0.6, sigma_tau_rel: float = 0.3,
                         dt: float = DT_STEP, N_ANG: int = 48, N_Z: int = 9, INCLUDE_SIDE: bool = True,
@@ -911,7 +877,7 @@ def monte_carlo_compare(ans, n_trials: int = 100,
         "global": cov_glob
     }
 
-# --------- 步长/采样稳健性 ---------
+
 def sweep_dt(ans, dt_list=(0.010, 0.015, 0.020, 0.030), N_ANG:int=48, N_Z:int=9, INCLUDE_SIDE:bool=True):
     sel = _ans_to_internal_selected(ans["selected"])
     out=[]
@@ -937,7 +903,6 @@ def sweep_sampling(ans, NANG_list=(24,48,96), NZ_list=(5,9,13), dt: float = DT_S
             print(f"  N_ANG={na:>3}, N_Z={nz:>2} -> cover={cov:.3f}  偏差={(cov-base_cov)/max(1e-12,base_cov):+.2%}")
     return out
 
-# --------- 扰动曲线（用于论文画图的数据表）---------
 def perturbation_curve(ans, sig_t_grid=(0.0,0.2,0.4,0.6,0.8,1.0), sig_tau_rel: float = 0.30,
                        reps: int = 30, dt: float = DT_STEP, N_ANG:int=48, N_Z:int=9):
     sel = _ans_to_internal_selected(ans["selected"])
@@ -959,7 +924,6 @@ def perturbation_curve(ans, sig_t_grid=(0.0,0.2,0.4,0.6,0.8,1.0), sig_tau_rel: f
         table.append((st, mean_v, p10, p50, p90))
     return table
 
-# --------- 一键验证入口 ---------
 def validate_q5(ans,
                 n_trials: int = 100,
                 local_sigma_t: float = 0.6,
@@ -969,7 +933,6 @@ def validate_q5(ans,
                 NZ_list=(5,9,13),
                 curve_sig_t=(0.0,0.2,0.4,0.6,0.8,1.0),
                 curve_reps: int = 30):
-    """综合验证：随机对比 + 步长/采样 + 扰动曲线"""
     _ = monte_carlo_compare(ans, n_trials=n_trials,
                             sigma_t=local_sigma_t, sigma_tau_rel=local_sigma_tau_rel,
                             dt=DT_STEP, N_ANG=48, N_Z=9, INCLUDE_SIDE=True,
@@ -979,9 +942,7 @@ def validate_q5(ans,
     _ = perturbation_curve(ans, sig_t_grid=curve_sig_t, sig_tau_rel=local_sigma_tau_rel,
                            reps=curve_reps, dt=DT_STEP, N_ANG=48, N_Z=9)
 
-# =========================
 # 邻域检验（最优解附近取样，保持锁定与 1s 间隔）
-# =========================
 def _group_by_uav(selected_internal):
     by={}
     for c in selected_internal:
@@ -1009,9 +970,6 @@ def _apply_uniform_shift_per_uav(base_sel, eps_t: float, eps_tau: float, rng_loc
     return cand
 
 def _apply_small_jitter_per_shot(base_sel, eps_t: float, eps_tau: float, rng_loc):
-    """
-    给同机 3 发分别加小抖动，然后**投影**回“同机 1s 间隔”可行域（尽量小改动）。
-    """
     cand = copy.deepcopy(base_sel)
     by = _group_by_uav(cand)
     for u,lst in by.items():
@@ -1047,11 +1005,6 @@ def neighborhood_validate_best(ans,
                                dt: float = DT_STEP,
                                N_ANG: int = 48, N_Z: int = 9, INCLUDE_SIDE: bool = True,
                                seed: int = 20250):
-    """
-    只在“当前最优解”附近采样 n_samples 组，严格保持锁定(θ,v)和同机1s间隔。
-    - 75% 样本：同机 3 发统一平移（最贴近“局部邻域”含义）
-    - 25% 样本：对每发小抖动，再投影回可行域
-    """
     rng_loc = np.random.default_rng(seed)
     base_sel = _ans_to_internal_selected(ans["selected"])
     base_cov, _, _ = _recompute_cover_L1(base_sel, dt, N_ANG, N_Z, INCLUDE_SIDE)
@@ -1088,11 +1041,7 @@ def neighborhood_validate_best(ans,
         "best_cov": best_improve[0]
     }
 
-# -------------------------
-# 示例：主程序
-# -------------------------
 if __name__ == "__main__":
-    # 你的求解
     ans = solve_q5(
         dt_step=DT_STEP,
         do_polish_L1=True,
@@ -1108,7 +1057,6 @@ if __name__ == "__main__":
     print("\n[Q5 | 报表] 无人机×烟幕投放×导弹干扰明细（12列，含零遮蔽行）：")
     print_report_rows(ans["rows"])
 
-    # 一键验证（100 组随机 + 稳健性 + 扰动曲线）
     validate_q5(ans,
                 n_trials=100,
                 local_sigma_t=0.6,
@@ -1119,7 +1067,6 @@ if __name__ == "__main__":
                 curve_sig_t=(0.0,0.2,0.4,0.6,0.8,1.0),
                 curve_reps=30)
 
-    # 仅在最优解邻域内取 100 组点验证（默认 eps_t=0.30s / eps_tau=0.20s）
     neighborhood_validate_best(ans,
                                n_samples=100,
                                eps_t=0.30,
