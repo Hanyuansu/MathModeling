@@ -13,12 +13,10 @@ R_TAR, H_TAR = 7.0, 10.0
 CYL_CENTER = np.array([0.0, 200.0, 0.0], dtype=float)
 P_TARGET   = np.array([0.0, 200.0, 5.0], dtype=float)
 
-# 导弹与无人机初始状态（以第1问场景为例）
 M0 = np.array([20000.0, 0.0, 2000.0], dtype=float)
 U0 = np.array([17800.0, 0.0, 1800.0], dtype=float)
 
 def missile_hit_time(m0: np.ndarray) -> float:
-    """导弹直线等速命中原点的时刻 """
     return float(np.linalg.norm(m0) / VM)
 
 def unit(v: np.ndarray) -> np.ndarray:
@@ -82,7 +80,6 @@ def _canonize_intervals(intervals, t0, t1, dt, eps=1e-9):
             else:
                 out.append((a, b))
     return out
-
 
 def covered_L0_at_time(m0, p_target, s_burst, t_burst, t) -> bool:
     m_t = missile_pos(m0, t)
@@ -172,7 +169,6 @@ def eval_cover_time_L0(theta: float, v_u: float, t_drop: float, tau: float,
     if in_seg:
         intervals.append((seg_start, t1))
 
-    # 规范化 + 覆盖由区间求和
     intervals = _canonize_intervals(intervals, t0, t1, dt)
     covered = sum(b - a for (a, b) in intervals)
     return covered, intervals
@@ -220,11 +216,7 @@ def eval_cover_time_L1(theta: float, v_u: float, t_drop: float, tau: float,
 
 
 class PSO:
-    """
-    粒子群优化
-    变量：x = [theta, v_u, t_drop, tau]
-    目标：最大化遮蔽时长（实现上用 -cover 作为损失最小化）
-    """
+
     def __init__(self,
                  f_eval,
                  bounds,
@@ -274,7 +266,6 @@ class PSO:
     def optimize(self):
         X, V, pbest_X, pbest_val, gbest_x, gbest_val = self._init_swarm()
 
-        # 初评估
         for i in range(self.swarm_size):
             loss_i, cover_i, info_i = self._loss(X[i])
             pbest_X[i] = X[i].copy()
@@ -284,7 +275,6 @@ class PSO:
                 gbest_x = X[i].copy()
                 gbest_info = info_i
 
-        # 迭代
         for _ in range(self.iters):
             w = self.w
             for i in range(self.swarm_size):
@@ -292,7 +282,6 @@ class PSO:
                 r2 = self.rng.random(len(self.bounds))
                 V[i] = w * V[i] + self.c1 * r1 * (pbest_X[i] - X[i]) + self.c2 * r2 * (gbest_x - X[i])
                 X[i] = X[i] + V[i]
-                # 边界/角度处理
                 for j, (lo, hi) in enumerate(self.bounds):
                     if j == 0:
                         X[i, j] = X[i, j] % (2.0 * math.pi)
@@ -316,18 +305,16 @@ class PSO:
 def solve_q2(strategy: str = "two_stage",
              dt_L0: float = 0.01,
              N_ANG: int = 48, N_Z: int = 9, INCLUDE_SIDE: bool = True, dt_L1: float = 0.02,
-             # PSO 参数（阶段1）
              swarm_size: int = 64, iters: int = 120, seed: int = 2025,
-             # 两阶段阶段2（L1微调）PSO 参数
              stage2_swarm: int = 48, stage2_iters: int = 80,
              init_hint: Optional[Tuple[float, float, float, float]] = None
              ) -> Dict[str, Any]:
 
     bounds = [
-        (0.0, 2.0 * math.pi),  # theta
-        (70.0, 140.0),         # v_u
-        (0.0, 60.0),           # t_drop
-        (0.2, 12.0),           # tau
+        (0.0, 2.0 * math.pi),
+        (70.0, 140.0),
+        (0.0, 60.0),
+        (0.2, 12.0),
     ]
 
     PTS = None
@@ -350,7 +337,6 @@ def solve_q2(strategy: str = "two_stage",
             clip_bounds(float(ta), bounds[3][0], bounds[3][1]),
         ], dtype=float)
 
-    # 求解
     if strategy == "L0":
         pso = PSO(f_eval_L0, bounds, swarm_size=swarm_size, iters=iters, seed=seed, init_hint=init_vec)
         best_x, best_cover, info = pso.optimize()
@@ -362,10 +348,8 @@ def solve_q2(strategy: str = "two_stage",
         eval_used = "L1"
 
     elif strategy == "two_stage":
-        # 阶段1：L0 全局
         pso1 = PSO(f_eval_L0, bounds, swarm_size=swarm_size, iters=iters, seed=seed, init_hint=init_vec)
         x1, cover1, info1 = pso1.optimize()
-        # 阶段2：L1 小规模精修
         pso2 = PSO(f_eval_L1, bounds, swarm_size=stage2_swarm, iters=stage2_iters, seed=seed+1, init_hint=x1)
         best_x, best_cover, info = pso2.optimize()
         eval_used = "two_stage"
@@ -415,7 +399,6 @@ def _intervals_ok(intervals, t0, t1, eps=1e-6):
     return True
 
 def _coverage_upper_bound_ok(cover, t_burst, T_HIT, eps=1e-6):
-    """覆盖时长不超过物理上界"""
     ub = max(0.0, min(T_EFFECT, T_HIT - t_burst))
     return cover <= ub + 2e-3
 
@@ -431,7 +414,6 @@ def _solve_and_unpack(strategy, **kw):
     return out, (th, v, td, ta, tb, cov, intervals)
 
 def validate_intervals_consistency(ans, dt_ref=0.01):
-    """区间与上界一致性 + 基本物理边界"""
     th = ans["theta_deg"] * math.pi/180.0
     v  = ans["v_u_mps"]; td = ans["t_drop_s"]; ta = ans["tau_s"]
     tb = td + ta; cov = ans["cover_total_s"]; intervals = ans["cover_intervals_s"]
@@ -448,7 +430,6 @@ def quick_grid_upper_bound(strategy="L0",
                            th_list=None, v_list=None, td_list=None, ta_list=None,
                            dt_L0=0.02, dt_L1=0.03,
                            N_ANG=32, N_Z=7, INCLUDE_SIDE=True):
-    """粗网格把关：返回网格最优覆盖，作为 sanity baseline"""
     if th_list is None:
         th_list = [0, 45, 90, 135, 180, 225, 270, 315]  # 度
     th_list = [math.radians(x) for x in th_list]
@@ -476,7 +457,6 @@ def quick_grid_upper_bound(strategy="L0",
 def convergence_test_dt(base_strategy="L0",
                         dts=(0.04, 0.02, 0.01, 0.005),
                         N_ANG=48, N_Z=9, INCLUDE_SIDE=True):
-    """时间步长收敛性（覆盖时长是否趋于稳定）"""
     rows=[]
     init_hint=None
     for k,dt in enumerate(dts):
@@ -518,18 +498,16 @@ def rotation_invariance_test(angles_deg=(0, 30, 90, 150),
                        swarm_size=48, iters=90, stage2_swarm=36, stage2_iters=60)
         covs.append(out["cover_total_s"])
 
-    # 复原
     M0[:] = M0_bak; U0[:] = U0_bak; P_TARGET[:] = P_bak; CYL_CENTER[:] = C_bak
 
-    # 检查波动
     if covs:
         if max(covs) - min(covs) > tol:
             print(f"[warn] 旋转不变性偏差较大：{covs}")
     return list(zip(angles_deg, covs))
 
 def sensitivity_test(strategy="two_stage",
-                     noise_pos=5.0,   # 位置扰动半径（米）
-                     noise_param=0.03,# 比例扰动（R_SMOKE、V_SINK）
+                     noise_pos=5.0,
+                     noise_param=0.03,
                      trials=10,
                      dt_L0=0.01, dt_L1=0.02,
                      N_ANG=48, N_Z=9, INCLUDE_SIDE=True, seed=42):
@@ -561,7 +539,6 @@ def multi_seed_stability(strategy="two_stage",
                          seeds=(2025, 7, 17, 99),
                          dt_L0=0.01, dt_L1=0.02,
                          N_ANG=48, N_Z=9, INCLUDE_SIDE=True):
-    """不同随机种子下的覆盖波动"""
     covs=[]
     for sd in seeds:
         out = solve_q2(strategy=strategy,
@@ -611,7 +588,6 @@ def run_all_validations():
     st = multi_seed_stability(strategy="two_stage", seeds=(2025,7,17,99))
     print("  stability:", st)
 
-# 可视化
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -628,7 +604,7 @@ def _pick_focus_time(t_burst, intervals, dt=0.01):
     best_t, best_d = t0, 1e18
     for tt in ts:
         d = point_to_segment_dist(P_TARGET, missile_pos(M0, tt), smoke_center_after_burst(
-            burst_point(U0, math.radians(0), 0, 0, 0), tt, 0))  # 仅占位，不用这个值
+            burst_point(U0, math.radians(0), 0, 0, 0), tt, 0))
     s_burst_dummy = np.zeros(3)
     for tt in ts:
         m = missile_pos(M0, tt)
@@ -674,7 +650,7 @@ def plot_cover_3d(ans, save_path=None):
     ugrid = np.linspace(0, 2*np.pi, 80)
     vgrid = np.linspace(0,   np.pi, 40)
     xs = s[0] + R_SMOKE*np.outer(np.cos(ugrid), np.sin(vgrid))
-    ys = s[1] + R_SMOKE*np.outer(np.sin(ugrid), np.cos(vgrid))  # 注意：这里改成 cos(v) 会变椭球观感
+    ys = s[1] + R_SMOKE*np.outer(np.sin(ugrid), np.cos(vgrid))
     ys = s[1] + R_SMOKE*np.outer(np.sin(ugrid), np.sin(vgrid))
     zs = s[2] + R_SMOKE*np.outer(np.ones_like(ugrid), np.cos(vgrid))
     ax.plot_surface(xs, ys, zs, rstride=1, cstride=1, linewidth=0.3,

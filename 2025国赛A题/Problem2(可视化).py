@@ -36,35 +36,29 @@ def plot_cover_timeline(
     fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
     y = 1.0
 
-    # 背景有效窗口（灰色粗线）
     ax.hlines(y, t0, t1, color=bg_color, lw=bg_lw, label="有效窗口")
 
-    # 遮掩区间（红色粗线）
     for (a, b) in intervals:
         aa = max(a, t0)
         bb = min(b, t1)
         if bb > aa:
             ax.hlines(y, aa, bb, color=fg_color, lw=fg_lw, label="遮掩段")
 
-    # 坐标轴与外观
     ax.set_xlim(t0, t1)
     ax.set_ylim(0.8, 1.2)
     ax.set_yticks([])
     ax.set_xlabel(xlabel)
     ax.set_title(title)
 
-    # 去重图例
     handles, labels = ax.get_legend_handles_labels()
     uniq = dict(zip(labels, handles))
     ax.legend(uniq.values(), uniq.keys(), loc=legend_loc, fontsize=9)
 
-    # 保存
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, dpi=dpi, transparent=transparent, pad_inches=pad_inches)
         print(f"[OK] 已保存：{save_path}")
 
-    # 展示/关闭
     if show:
         plt.show()
     if close:
@@ -75,9 +69,6 @@ def plot_cover_timeline(
 
 if __name__ == "__main__":
     out_dir = os.path.join("result", "Problem2_result")
-
-
-
     t_burst_TS = 0.869068730035006
     intervals_TS = [(0.869068730035006, 5.929068730035007)]
     plot_cover_timeline(

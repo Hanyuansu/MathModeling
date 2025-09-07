@@ -417,7 +417,6 @@ def _force_fill_to_15(chosen_list, tgrids_loc, dt_loc):
             used_per_uav[u] += 1
     return chosen_list
 
-# L1 抛光
 def polish_L1_keep_course(selected: List[Dict[str,Any]],
                           tgrids: Dict[str,np.ndarray],
                           dt_mask: float = DT_STEP,
@@ -476,7 +475,6 @@ def polish_L1_keep_course(selected: List[Dict[str,Any]],
             final_union[nm] = np.logical_or(final_union[nm], c["mask_by_missile"][nm])
     return best, final_union
 
-#  L1 全局随机优化（模拟退火 SA）
 def global_sa_optimize_L1(selected: List[Dict[str,Any]],
                           tgrids: Dict[str,np.ndarray],
                           dt_mask: float = DT_STEP,
@@ -542,7 +540,6 @@ def global_sa_optimize_L1(selected: List[Dict[str,Any]],
         new_sol = cur[:i] + [trial] + cur[i+1:]
         new_score, _ = score_of(new_sol)
 
-        # 退火接受准则
         T = T0 * (Tend / T0) ** (k / max(1, iters-1))
         if new_score >= cur_score or rng.random() < math.exp((new_score - cur_score) / max(1e-12, T)):
             cur = new_sol
@@ -637,12 +634,10 @@ def solve_q5(
     heading_tol_deg: float = HEADING_TOL_DEG,
     speed_tol: float = SPEED_TOL
 ) -> Dict[str,Any]:
-    # L0 候选
     candidates_L0, tgrids_L0 = build_candidates_L0(dt=dt_step)
     counts = {i: sum(1 for c in candidates_L0 if c["uav"]==i) for i in range(len(UAVS))}
     print("[debug] L0 per-UAV nonzero candidates:", counts)
 
-    # 播种→贪心→补满
     seed_chosen, seed_union, budgets, locks = seed_cover_all_missiles(
         candidates_L0, tgrids_L0, dt_step,
         budgets_per_uav=BUDGETS,
@@ -666,7 +661,6 @@ def solve_q5(
                                               rounds=POLISH_ROUNDS, N_ang=N_ANG, N_Z=N_Z, INCLUDE_SIDE=INCLUDE_SIDE)
         mode = "L0 → L1(polish)"
 
-    # L1 全局 SA 优化
     if do_global_SA:
         before_score = sum(float(union[nm].sum()*dt_step) for nm in union)
         chosen, union = global_sa_optimize_L1(
@@ -787,7 +781,6 @@ def _repair_min_gap_per_uav(selected_internal, min_gap: float = MIN_DROP_GAP):
             last = float(c["t_drop"])
     return selected_internal
 
-# 随机扰动 和 全局随机
 def _perturb_solution(selected_internal, sigma_t: float = 0.6, sigma_tau_rel: float = 0.3, seed: int = None):
     rng_loc = np.random.default_rng(seed)
     out=[]
@@ -803,21 +796,17 @@ def _perturb_solution(selected_internal, sigma_t: float = 0.6, sigma_tau_rel: fl
     return _repair_min_gap_per_uav(out, MIN_DROP_GAP)
 
 def _random_solution_global_like(selected_internal, seed: int = None):
-    """保留每架 UAV 的(θ,v)锁定不变，重新在全局范围随机三发（同机 1s 间隔）"""
     rng_loc = np.random.default_rng(seed)
     thv = {}
     for c in selected_internal:
         thv[c["uav"]] = (float(c["theta"]), float(c["v"]))
-    # 每机生成预算数目的新弹
     cnt_per_uav = {i:0 for i in range(len(UAVS))}
     out=[]
     for u in range(len(UAVS)):
         th, v = thv[u]
         K = BUDGETS[u]
-        # 先随机出 K 个 t_drop，排序再修间隔
         tds = list(rng_loc.uniform(0.0, 60.0, size=K))
         tds.sort()
-        # 修间隔
         for i in range(1, K):
             if tds[i] < tds[i-1] + MIN_DROP_GAP:
                 tds[i] = min(60.0, tds[i-1] + MIN_DROP_GAP)
@@ -962,20 +951,16 @@ def _apply_small_jitter_per_shot(base_sel, eps_t: float, eps_tau: float, rng_loc
     cand = copy.deepcopy(base_sel)
     by = _group_by_uav(cand)
     for u,lst in by.items():
-        # 1. 独立小扰动
         for c in lst:
             td = clip(float(c["t_drop"]) + float(rng_loc.uniform(-eps_t,  eps_t)), 0.0, 60.0)
             ta = clip(float(c["tau"])    + float(rng_loc.uniform(-eps_tau, eps_tau)), 0.2, 12.0)
             c["t_drop"]  = td
             c["tau"]     = ta
             c["t_burst"] = td + ta
-        # 2. 投影
         lst.sort(key=lambda x:x["t_drop"])
-        # 先前向保证间隔
         for i in range(1, len(lst)):
             if lst[i]["t_drop"] < lst[i-1]["t_drop"] + MIN_DROP_GAP:
                 lst[i]["t_drop"] = min(60.0, lst[i-1]["t_drop"] + MIN_DROP_GAP)
-        # 若超界，后向压回区间
         if lst and lst[-1]["t_drop"] > 60.0:
             lst[-1]["t_drop"] = 60.0
         for i in reversed(range(len(lst)-1)):
@@ -988,9 +973,9 @@ def _apply_small_jitter_per_shot(base_sel, eps_t: float, eps_tau: float, rng_loc
 
 def neighborhood_validate_best(ans,
                                n_samples: int = 100,
-                               eps_t: float = 0.30,     # 每架统一平移的时间半径（秒）
-                               eps_tau: float = 0.20,   # 每架统一平移的tau半径（秒）
-                               ratio_per_shot_jitter: float = 0.25,  # 25% 样本对单发做微抖动 + 投影
+                               eps_t: float = 0.30,
+                               eps_tau: float = 0.20,
+                               ratio_per_shot_jitter: float = 0.25,
                                dt: float = DT_STEP,
                                N_ANG: int = 48, N_Z: int = 9, INCLUDE_SIDE: bool = True,
                                seed: int = 20250):

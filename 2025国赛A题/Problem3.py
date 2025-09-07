@@ -83,7 +83,7 @@ def cyl_points_top_bottom(N_ang: int = 48) -> np.ndarray:
     ks = np.arange(N_ang, dtype=float)
     angs = 2.0 * math.pi * ks / float(N_ang)
     cos_a, sin_a = np.cos(angs), np.sin(angs)
-    xy = np.stack([R_TAR * cos_a, R_TAR * sin_a], axis=1)  # (N_ang,2)
+    xy = np.stack([R_TAR * cos_a, R_TAR * sin_a], axis=1)
     top = np.column_stack([cx + xy[:, 0], cy + xy[:, 1], np.full_like(ks, H_TAR)])
     bot = np.column_stack([cx + xy[:, 0], cy + xy[:, 1], np.zeros_like(ks)])
     return np.vstack([bot, top]).astype(float)
@@ -94,7 +94,7 @@ def cyl_points_side(N_ang: int = 48, N_z: int = 9) -> np.ndarray:
     ks = np.arange(N_ang, dtype=float)
     angs = 2.0 * math.pi * ks / float(N_ang)
     cos_a, sin_a = np.cos(angs), np.sin(angs)
-    xy = np.stack([R_TAR * cos_a, R_TAR * sin_a], axis=1)  # (N_ang,2)
+    xy = np.stack([R_TAR * cos_a, R_TAR * sin_a], axis=1)
 
     pts = []
     for z in zs:
@@ -159,7 +159,6 @@ def eval_cover_time_multi_L0(theta: float, v_u: float,
                                      [clip(t,0.2,12.0) for t in taus])),
                             min_gap=1.0, t_min=0.0, t_max=60.0)
 
-    # 预计算三枚弹的起爆
     bursts = []
     for (t_drop, tau) in pairs:
         t_burst = t_drop + tau
@@ -297,19 +296,17 @@ class PSO:
 
     def optimize(self):
         X, V, pbest_X, pbest_val, gbest_x, gbest_val = self._init_swarm()
-        # 初评估
         gbest_info = None
         for i in range(self.swarm_size):
             xi = self._clip_vec(X[i].copy())
             score_i, _info = self.f_eval(xi)
-            loss_i = -score_i  # 最大化->最小化
+            loss_i = -score_i
             pbest_X[i] = xi
             pbest_val[i] = loss_i
             if loss_i < gbest_val:
                 gbest_val = loss_i
                 gbest_x = xi.copy()
                 gbest_info = _info
-        # 迭代
         for _iter in range(self.iters):
             w = self.w
             for i in range(self.swarm_size):
@@ -330,21 +327,16 @@ class PSO:
         return gbest_x, best_cover, gbest_info
 
 def solve_q3(strategy: str = "L0",
-             # L0/L1 数值参数
              dt_L0: float = 0.01,
              N_ANG: int = 48, N_Z: int = 9, INCLUDE_SIDE: bool = True, dt_L1: float = 0.02,
-             # PSO 参数
              swarm_size: int = 96, iters: int = 180, seed: int = 2025,
-             # 两阶段二次精修的 PSO 参数
              stage2_swarm: int = 64, stage2_iters: int = 90,
-             # 可选初始化提示（来自你的直觉或 Q2 最优）：(theta, v, t1, tau1, t2, tau2, t3, tau3)
              init_hint: Optional[Tuple[float, float, float, float, float, float, float, float]] = None
              ) -> Dict[str, Any]:
 
-    # 维度与边界（theta, v, t1, tau1, t2, tau2, t3, tau3）
     bounds = [
-        (0.0, 2.0 * math.pi),  # theta
-        (70.0, 140.0),         # v
+        (0.0, 2.0 * math.pi),
+        (70.0, 140.0),
         (0.0, 60.0), (0.2, 12.0),
         (0.0, 60.0), (0.2, 12.0),
         (0.0, 60.0), (0.2, 12.0),
@@ -364,7 +356,6 @@ def solve_q3(strategy: str = "L0",
         cover, intervals, info = eval_cover_time_multi_L1(th, v, [t1, t2, t3], [ta1, ta2, ta3], PTS=PTS, dt=dt_L1)
         return cover, {"intervals": intervals, "info": info, "theta": th, "v": v}
 
-    # 初值（可选）
     init_vec = None
     if init_hint is not None:
         init_vec = np.array([
@@ -375,7 +366,6 @@ def solve_q3(strategy: str = "L0",
             clip(float(init_hint[6]), bounds[6][0], bounds[6][1]), clip(float(init_hint[7]), bounds[7][0], bounds[7][1]),
         ], dtype=float)
 
-    # 按策略求解
     if strategy == "L0":
         pso = PSO(f_eval=f_eval_L0, bounds=bounds, swarm_size=swarm_size, iters=iters, seed=seed, init_hint=init_vec)
         best_x, best_cover, extra = pso.optimize()
@@ -385,23 +375,19 @@ def solve_q3(strategy: str = "L0",
         best_x, best_cover, extra = pso.optimize()
         eval_used = "L1"
     elif strategy == "two_stage":
-        # Stage 1: L0 快速全局找好解
         pso1 = PSO(f_eval=f_eval_L0, bounds=bounds, swarm_size=swarm_size, iters=iters, seed=seed, init_hint=init_vec)
         x1, cover1, extra1 = pso1.optimize()
-        # Stage 2: L1 小群体精修
         pso2 = PSO(f_eval=f_eval_L1, bounds=bounds, swarm_size=stage2_swarm, iters=stage2_iters, seed=seed+1, init_hint=x1)
         best_x, best_cover, extra = pso2.optimize()
         eval_used = "two_stage"
     else:
         raise ValueError("strategy 必须为 'L0'、'L1' 或 'two_stage'")
 
-    # 整理输出（全部转为 Python float，避免 np.float64）
     th = float(extra["theta"]); v = float(extra["v"])
     info = extra["info"]
     intervals = extra["intervals"]
-    pairs = info["pairs"]              # 纠正后的 (t, tau)
-    bursts = info["bursts"]            # 每枚弹的起爆信息（已按时间序）
-
+    pairs = info["pairs"]
+    bursts = info["bursts"]
     out = {
         "strategy": eval_used,
         "theta_deg": float(math.degrees(th)),
@@ -420,9 +406,6 @@ def solve_q3(strategy: str = "L0",
     }
     return out
 
-# =========================
-# 九、结果美化打印 & 随机健壮性检查
-# =========================
 
 def pretty_print(tag: str, ans: Dict[str, Any]):
     print(f"[Q3 | {tag}] 最优：")
@@ -434,7 +417,7 @@ def pretty_print(tag: str, ans: Dict[str, Any]):
     print(f"  cover_total_s: {round(ans['cover_total_s'], 3)}")
     print(f"  cover_intervals_s: {ans['cover_intervals_s']}")
     if ans.get("bursts"):
-        print(f"  bursts: {ans['bursts'][:3]}")  # 只展示前三条（本题通常3条）
+        print(f"  bursts: {ans['bursts'][:3]}")
 
 def randomized_check(n_samples: int = 100,
                      eval_strategy: str = "L1",
@@ -442,18 +425,13 @@ def randomized_check(n_samples: int = 100,
                      seed: int = 2025,
                      N_ANG: int = 48, N_Z: int = 9, INCLUDE_SIDE: bool = True,
                      dt_eval: float = 0.02):
-    """
-    随机检查：用 L1/L0 评估随机参数的并集遮蔽时长，验证基线最优解的稳健性
-    - global 模式：参数在全域均匀采样（更易出现 0，但更客观）
-    - local  模式：围绕给定解做高斯扰动（更易出现非 0，便于 sanity check）
-    """
+
     rng = np.random.default_rng(seed)
     PTS = build_cylinder_samples(N_ang=N_ANG, N_z=N_Z, include_side=INCLUDE_SIDE) if eval_strategy == "L1" else None
 
     def sample_global():
         theta = rng.uniform(0, 2*math.pi)
         v = rng.uniform(70.0, 140.0)
-        # 为提高出现非零覆盖的概率，固定前两弹靠前、第三弹靠 50s 左右（但仍加抖动）
         t1 = rng.uniform(0.0, 0.3)
         t2 = t1 + rng.uniform(1.0, 1.5)
         t3 = rng.uniform(47.0, 53.0)
@@ -463,7 +441,6 @@ def randomized_check(n_samples: int = 100,
         return theta, v, [t1, t2, t3], [tau1, tau2, tau3]
 
     def sample_local(base):
-        # 围绕给定解做小扰动（高斯），并裁剪合法
         theta = (math.radians(base["theta_deg"]) + rng.normal(0, math.radians(4.0))) % (2*math.pi)
         v = clip(base["v_u_mps"] + rng.normal(0, 8.0), 70.0, 140.0)
         t1, t2, t3 = [clip(x + rng.normal(0, 1.0), 0, 60) for x in base["drops_s"]]
@@ -506,7 +483,6 @@ def randomized_check(n_samples: int = 100,
 
 
 def _single_mask_L0(theta: float, v: float, t_drop: float, tau: float, tgrid: np.ndarray) -> np.ndarray:
-    """Q3 单枚弹在 L0 判定下的时间掩码"""
     t_burst = t_drop + tau
     s_burst = burst_point(U0, theta, v, t_drop, tau)
     if t_burst >= T_HIT or s_burst[2] <= 0.0:
@@ -523,7 +499,6 @@ def _single_mask_L0(theta: float, v: float, t_drop: float, tau: float, tgrid: np
     return mask
 
 def _single_mask_L1(theta: float, v: float, t_drop: float, tau: float, tgrid: np.ndarray, PTS: np.ndarray) -> np.ndarray:
-    """Q3 单枚弹在 L1 判定下的时间掩码"""
     t_burst = t_drop + tau
     s_burst = burst_point(U0, theta, v, t_drop, tau)
     if t_burst >= T_HIT or s_burst[2] <= 0.0:
@@ -540,16 +515,11 @@ def _single_mask_L1(theta: float, v: float, t_drop: float, tau: float, tgrid: np
     return mask
 
 def print_q3_report_table(ans: Dict[str, Any]):
-    """
-    打印以下列的明细表（每枚干扰弹 1 行）：
-    无人机运动方向 | 无人机运动速度 (m/s) | 烟幕干扰弹编号 | 投放点 x/y/z | 起爆点 x/y/z | 有效干扰时长 (s)
-    """
     theta_deg = float(ans["theta_deg"])
     v = float(ans["v_u_mps"])
     drops = [float(x) for x in ans["drops_s"]]
     taus  = [float(x) for x in ans["taus_s"]]
 
-    # 评估模式与时间网格
     mode_L1 = (ans["strategy"] != "L0")
     cfg = ans.get("config", {})
     dt = float(cfg["dt_L1"] if mode_L1 else cfg["dt_L0"])
@@ -567,16 +537,13 @@ def print_q3_report_table(ans: Dict[str, Any]):
 
     th = math.radians(theta_deg)
     for i, (td, ta) in enumerate(zip(drops, taus), 1):
-        # 几何点
         r_drop = uav_pos(U0, th, v, td)
         s_burst = burst_point(U0, th, v, td, ta)
-        # 单枚有效时长（与求解一致的评估模式）
         if mode_L1:
             mask = _single_mask_L1(th, v, td, ta, tgrid, PTS)
         else:
             mask = _single_mask_L0(th, v, td, ta, tgrid)
         eff_time = float(mask.sum() * dt)
-        # 打印
         print(f"{theta_deg:.3f}\t{v:.3f}\t{i}\t"
               f"{r_drop[0]:.3f}\t{r_drop[1]:.3f}\t{r_drop[2]:.3f}\t"
               f"{s_burst[0]:.3f}\t{s_burst[1]:.3f}\t{s_burst[2]:.3f}\t"
@@ -591,7 +558,7 @@ if __name__ == "__main__":
 
     hint = (math.radians(190.0), 120.0, 2.0, 3.5, 4.0, 3.2, 7.0, 3.0)
     ans_L1 = solve_q3(strategy="L1", N_ANG=48, N_Z=9, INCLUDE_SIDE=True, dt_L1=0.02,
-                      swarm_size=80, iters=140, init_hint=None)  # 或 init_hint=hint
+                      swarm_size=80, iters=140, init_hint=None)
     print("[Q3 | L1] 最优：");
     [print(f"  {k}: {v}") for k, v in ans_L1.items()]
 

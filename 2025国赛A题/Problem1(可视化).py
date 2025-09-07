@@ -2,7 +2,6 @@ import os
 import math
 import numpy as np
 
-# 题面常量
 g = 9.81
 VM = 300.0
 V_SINK = 3.0
@@ -11,9 +10,8 @@ T_EFFECT = 20.0
 
 R_TAR, H_TAR = 7.0, 10.0
 CYL_CENTER = np.array([0.0, 200.0, 0.0])
-P_CENTER   = np.array([0.0, 200.0, H_TAR/2.0])  # 圆柱几何中心作为视轴起点
+P_CENTER   = np.array([0.0, 200.0, H_TAR/2.0])
 
-# 初始状态
 M1_0  = np.array([20000.0, 0.0, 2000.0])
 FY1_0 = np.array([17800.0, 0.0, 1800.0])
 VU       = 120.0
@@ -25,7 +23,6 @@ T_BURST  = T_DROP + TAU
 T0, T1 = T_BURST, T_BURST + 20.0
 DT = 0.001
 
-# 运动学
 def unit(v):
     n = np.linalg.norm(v)
     return v / n if n > 0 else v
@@ -51,9 +48,7 @@ def smoke_center(t):
     dz = -V_SINK * max(0.0, t - T_BURST)
     return S_BURST + np.array([0.0, 0.0, dz])
 
-#  L0 判定
 def point_seg_distance(P, Q, X):
-    """点X到线段PQ的最小距离"""
     v = Q - P
     vv = float(np.dot(v, v))
     if vv <= 0.0:
@@ -83,7 +78,6 @@ def find_intervals_L0(t0, t1, dt):
         intervals.append((a, t1))
     return intervals
 
-# 可视化
 def plot_cover_schematic(save_path=None):
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
@@ -121,7 +115,6 @@ def plot_cover_schematic(save_path=None):
         P_in  = P_CENTER + u * t1
         P_out = P_CENTER + u * t2
 
-    # 球心到视轴的垂足 P
     t_foot = float(np.dot(s - P_CENTER, u))
     P_foot = P_CENTER + u * t_foot
 
@@ -139,19 +132,15 @@ def plot_cover_schematic(save_path=None):
 
     L = 2.2 * R_SMOKE
     if have_intersection:
-        # 内段
         ax.plot([P_in[0], P_out[0]],[P_in[1], P_out[1]],[P_in[2], P_out[2]],
                 'k-', lw=2.2, label='导弹视轴（球内实线）')
-        # 左外段
         L1 = P_in - u*L
         ax.plot([L1[0], P_in[0]],[L1[1], P_in[1]],[L1[2], P_in[2]],
                 'k--', lw=2.2)
-        # 右外段
         L2 = P_out + u*L
         ax.plot([P_out[0], L2[0]],[P_out[1], L2[1]],[P_out[2], L2[2]],
                 'k--', lw=2.2)
     else:
-        # 没交点：整段虚线
         O1 = P_CENTER - u*L; O2 = P_CENTER + u*L
         ax.plot([O1[0],O2[0]],[O1[1],O2[1]],[O1[2],O2[2]], 'k--', lw=2.2,
                 label='导弹视轴')
@@ -200,7 +189,6 @@ def plot_cover_timeline(save_path=None, show_intervals_text=False, show_total=Tr
     title = "M1  总遮蔽时长=1.496 s"
     ax.set_title(title)
 
-    # 去重图例
     handles, labels = ax.get_legend_handles_labels()
     uniq = dict(zip(labels, handles))
     ax.legend(uniq.values(), uniq.keys(), loc="upper right", fontsize=9)

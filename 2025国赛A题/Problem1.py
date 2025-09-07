@@ -2,7 +2,6 @@ import os
 import math
 import numpy as np
 
-# 题面常量
 g = 9.81
 VM = 300.0
 V_SINK = 3.0
@@ -13,7 +12,6 @@ R_TAR, H_TAR = 7.0, 10.0
 CYL_CENTER = np.array([0.0, 200.0, 0.0])
 P_CENTER  = np.array([0.0, 200.0, H_TAR/2.0])
 
-# 初始位置
 M1_0 = np.array([20000.0, 0.0, 2000.0])
 FY1_0 = np.array([17800.0, 0.0, 1800.0])
 
@@ -23,7 +21,6 @@ T_DROP = 1.5
 TAU = 3.6
 T_BURST = T_DROP + TAU
 
-# 时间窗口
 T0 = T_BURST
 T1 = T_BURST + 20.0
 DT = 0.001
@@ -31,25 +28,20 @@ DT = 0.001
 USE_SIDE = True
 USE_L0 = True
 
-# 运动学
 def unit(v: np.ndarray) -> np.ndarray:
-    """单位化向量；零向量保持零"""
     n = np.linalg.norm(v)
     return v / n if n > 0 else v
 
 def missile_pos(t: float) -> np.ndarray:
-    """导弹：恒速直线飞向原点"""
     d = unit(-M1_0)
     return M1_0 + VM * d * t
 
 def uav_pos(t: float) -> np.ndarray:
-    """无人机：等高匀速"""
     return np.array([FY1_0[0] + VU * HEADING[0] * t,
                      FY1_0[1] + VU * HEADING[1] * t,
                      FY1_0[2]])
 
 def burst_point() -> np.ndarray:
-    """水平平抛运动，竖直自由落体"""
     r_drop = uav_pos(T_DROP)
     horiz = np.array([VU * HEADING[0] * TAU, VU * HEADING[1] * TAU, 0.0])
     vert  = np.array([0.0, 0.0, -0.5 * g * TAU * TAU])
@@ -58,13 +50,11 @@ def burst_point() -> np.ndarray:
 S_BURST = burst_point()
 
 def smoke_center(t: float) -> np.ndarray:
-    """起爆后云团球心：以 3 m/s 匀速下沉"""
     dz = -V_SINK * max(0.0, t - T_BURST)
     return S_BURST + np.array([0.0, 0.0, dz])
 
 # ------------------- 距离与采样 -------------------
 def point_seg_distance(P: np.ndarray, Q: np.ndarray, X: np.ndarray) -> float:
-    """点 X 到线段 PQ 的最小距离"""
     v = Q - P
     vv = float(np.dot(v, v))
     if vv == 0.0:
@@ -75,7 +65,6 @@ def point_seg_distance(P: np.ndarray, Q: np.ndarray, X: np.ndarray) -> float:
     return float(np.linalg.norm(X - Y))
 
 def cyl_points_top_bottom(N_ang: int = 72) -> np.ndarray:
-    """上下圆面各 N_ang 个点"""
     cx, cy, cz = CYL_CENTER
     out = []
     for z in (cz, cz + H_TAR):
@@ -87,7 +76,6 @@ def cyl_points_top_bottom(N_ang: int = 72) -> np.ndarray:
     return np.stack(out, axis=0)
 
 def cyl_points_side(N_ang: int = 72, N_z: int = 11) -> np.ndarray:
-    """侧壁：N_z 层 × 每层 N_ang 个点"""
     cx, cy, cz = CYL_CENTER
     zs = np.linspace(cz, cz + H_TAR, N_z)
     out = []
@@ -104,7 +92,6 @@ if USE_SIDE:
     PTS_L1.append(cyl_points_side(72, 11))
 PTS_L1 = np.concatenate(PTS_L1, axis=0)
 
-# 遮蔽判定与积分
 def covered_L0(t: float) -> bool:
     m = missile_pos(t)
     s = smoke_center(t)
@@ -119,7 +106,6 @@ def covered_L1(t: float) -> bool:
     return False
 
 def integrate_cover(flag_func, t0: float, t1: float, dt: float):
-    """在 [t0,t1] 上积分遮蔽"""
     covered = 0.0
     intervals = []
     t = t0
@@ -141,7 +127,6 @@ def integrate_cover(flag_func, t0: float, t1: float, dt: float):
     return covered, intervals
 
 if __name__ == "__main__":
-    # 结果只打印一次
     print(f"Burst time te = {T_BURST:.3f} s")
     print(f"Burst point  = ({S_BURST[0]:.3f}, {S_BURST[1]:.3f}, {S_BURST[2]:.3f}) m")
 

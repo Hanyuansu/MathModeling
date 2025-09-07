@@ -30,7 +30,6 @@ def missile_hit_time(m0: np.ndarray) -> float:
 
 T_HIT = missile_hit_time(M0)
 
-# 角度显示归一化
 def deg360(theta_rad: float) -> float:
     d = math.degrees(theta_rad)
     d = (d % 360.0 + 360.0) % 360.0
@@ -116,16 +115,10 @@ def covered_L1_at_time_vectorized(m0, s_burst, t_burst, t, PTS) -> bool:
     dist = np.linalg.norm(s_t - Y, axis=1)
     return bool(np.any(dist <= R_SMOKE))
 
-
-# 图论：候选生成 + 掩码 + 贪心 + 兜底
-
 def _time_grid(dt: float = 0.02) -> np.ndarray:
     return np.arange(0.0, T_HIT + 1e-12, dt)
 
 def _candidate_from_anchor(u0: np.ndarray, frac: float, alpha: float, tau_mult: float, clamp_eps: float = 0.10):
-    """
-    几何锚点生成单个候选（θ, v, t_drop, τ）
-    """
     t_b = clip(frac * min(60.0, T_HIT - 2.0), 0.5, 59.5)
     m_tb = missile_pos(M0, t_b)
     Y = P_TARGET + alpha * (m_tb - P_TARGET)
@@ -148,7 +141,6 @@ def _candidate_from_anchor(u0: np.ndarray, frac: float, alpha: float, tau_mult: 
 
 def _candidate_mask_L0(uav_idx: int, theta: float, v: float, t_drop: float, tau: float,
                        tgrid: np.ndarray) -> np.ndarray:
-    """生成某候选在 L0 判定下的时间掩码"""
     u0 = UAVS[uav_idx]["U0"]
     t_burst = t_drop + tau
     if t_burst >= T_HIT:
@@ -171,7 +163,6 @@ def _candidate_mask_L0(uav_idx: int, theta: float, v: float, t_drop: float, tau:
 
 def _candidate_mask_L1(uav_idx: int, theta: float, v: float, t_drop: float, tau: float,
                        tgrid: np.ndarray, PTS: np.ndarray) -> np.ndarray:
-    """生成某候选在 L1 判定下的时间掩码"""
     u0 = UAVS[uav_idx]["U0"]
     t_burst = t_drop + tau
     if t_burst >= T_HIT:
@@ -235,7 +226,6 @@ def remask_candidates(
     dt_mask: float,
     PTS: Optional[np.ndarray] = None
 ) -> List[Dict[str, Any]]:
-    """把候选重新用指定模式打分"""
     out = []
     for c in candidates:
         u = c["uav"]; th, v, td, ta = c["theta"], c["v"], c["t_drop"], c["tau"]
@@ -254,7 +244,6 @@ def remask_candidates(
         out.append(c2)
     return out
 
-# 兜底：寻找最大未覆盖时间空档
 def _largest_gap(mask: np.ndarray, tgrid: np.ndarray) -> Tuple[float, float]:
     if len(tgrid) < 2:
         return 0.0, 0.0
@@ -276,7 +265,6 @@ def _synthesize_and_polish_for_gap(uav_idx: int, gap_center_t: float,
                                    tgrid: np.ndarray,
                                    mask_mode: str = 'L0',
                                    PTS: Optional[np.ndarray] = None) -> Optional[Dict[str, Any]]:
-    """围绕最大空档时间点合成一批邻域候选，选择得分最高者兜底"""
     u0 = UAVS[uav_idx]["U0"]
     t_b = clip(gap_center_t, 0.6, min(59.5, T_HIT-0.5))
     frac = t_b / min(60.0, T_HIT-2.0)
@@ -312,14 +300,12 @@ def _synthesize_and_polish_for_gap(uav_idx: int, gap_center_t: float,
                             best = c1
     return best
 
-# 每个 UAV 恰好选 1
 def select_exact_one_per_uav(
     candidates: List[Dict[str, Any]],
     tgrid: np.ndarray,
     mask_mode: str = 'L0',
     PTS: Optional[np.ndarray] = None
 ) -> Tuple[List[Dict[str, Any]], float, np.ndarray]:
-    """分区拟阵 + 兜底"""
     groups = {0: [], 1: [], 2: []}
     for c in candidates:
         groups[c["uav"]].append(c)
@@ -365,7 +351,6 @@ def greedy_partition_matroid_max_coverage(
     per_uav_limit: int = 1,
     K_total: int = 3
 ) -> Tuple[List[Dict[str, Any]], float, np.ndarray]:
-    """备用贪心（不强制每 UAV 必选）"""
     chosen = []
     union_mask = np.zeros_like(tgrid, dtype=bool)
     counts = {0: 0, 1: 0, 2: 0}
@@ -392,7 +377,6 @@ def greedy_partition_matroid_max_coverage(
     return chosen, total, union_mask
 
 def _mask_to_intervals(mask: np.ndarray, tgrid: np.ndarray) -> List[Tuple[float, float]]:
-    """把布尔时间掩码转换为区间列表"""
     intervals = []
     if len(mask) == 0:
         return intervals
@@ -409,15 +393,13 @@ def _mask_to_intervals(mask: np.ndarray, tgrid: np.ndarray) -> List[Tuple[float,
 
 
 def solve_q4_graph(
-    strategy: str = 'L0',          # 'L0' | 'L1' | 'DUAL'
+    strategy: str = 'L0',
     dt_mask: float = 0.015,
-    # 候选池密度
     fracs=(0.12, 0.25, 0.40, 0.55, 0.70, 0.85, 0.92, 0.96, 0.985, 0.995),
     alphas=(0.60, 0.70, 0.80, 0.88, 0.92, 0.96, 0.985),
     taus=(0.55, 0.70, 0.85, 1.00, 1.15, 1.30, 1.50),
     per_uav_keep=28,
     N_ANG: int = 48, N_Z: int = 9, INCLUDE_SIDE: bool = True,
-    # 选择策略
     force_one_per_uav: bool = True,
     dual_per_uav_keep_L1: Optional[int] = None,
     debug: bool = False
@@ -431,7 +413,6 @@ def solve_q4_graph(
     if mode in ('L1','DUAL'):
         PTS = build_cylinder_samples(N_ang=N_ANG, N_z=N_Z, include_side=INCLUDE_SIDE)
 
-    # 单策略：L0 或 L1
     if mode in ('L0','L1'):
         cands, tgrid = build_candidates_q4(
             fracs=fracs, alphas=alphas, taus=taus,
@@ -490,9 +471,6 @@ def solve_q4_graph(
             }
         }
 
-    # 双策略
-
-    # 1. 用 L0 快速建池与初筛
     cands_L0, tgrid = build_candidates_q4(
         fracs=fracs, alphas=alphas, taus=taus,
         per_uav_keep=per_uav_keep, dt_mask=dt_mask,
@@ -502,10 +480,8 @@ def solve_q4_graph(
         counts0 = {i: sum(1 for c in cands_L0 if c["uav"]==i) for i in range(3)}
         print("[debug][DUAL] L0 pool per-UAV:", counts0)
 
-    # 2. 对 L0 池“换评估模式”为 L1 并重新打分
     PTS = build_cylinder_samples(N_ang=N_ANG, N_z=N_Z, include_side=INCLUDE_SIDE)
     cands_L1 = remask_candidates(cands_L0, tgrid, 'L1', dt_mask, PTS=PTS)
-    # 截断每UAV数量
     if dual_per_uav_keep_L1 is None:
         dual_per_uav_keep_L1 = per_uav_keep
     groups = {0: [], 1: [], 2: []}
@@ -518,7 +494,6 @@ def solve_q4_graph(
         counts1 = {i: sum(1 for c in cands_L1_trim if c["uav"]==i) for i in range(3)}
         print("[debug][DUAL] L1 re-score pool per-UAV:", counts1)
 
-    # 3. 在 L1 掩码下正式选择
     if force_one_per_uav:
         picked, cover_val, union_mask = select_exact_one_per_uav(cands_L1_trim, tgrid, mask_mode='L1', PTS=PTS)
     else:
@@ -568,16 +543,12 @@ def solve_q4_graph(
     }
 
 def _reconstruct_union_from_ans(ans: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    用 ans 返回的参数重建并集掩码，作为一致性校验依据。
-    """
     cfg = ans.get("config", {})
     dt = float(cfg.get("dt_mask", 0.015))
     tgrid = _time_grid(dt)
     strategy = str(ans.get("strategy", "L0")).upper()
     mode = 'L1' if ('L1' in strategy) else 'L0'
 
-    # 构建 PTS
     PTS = None
     if mode == 'L1':
         PTS = build_cylinder_samples(
