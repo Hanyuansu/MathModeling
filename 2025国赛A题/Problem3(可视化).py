@@ -95,7 +95,6 @@ def plot_cover_timeline(
     ax.set_xlabel(xlabel)
     ax.set_title(title)
 
-    # 去重图例
     handles, labels = ax.get_legend_handles_labels()
     uniq = dict(zip(labels, handles))
 
@@ -108,7 +107,6 @@ def plot_cover_timeline(
     else:
         ax.legend(uniq.values(), uniq.keys(), loc=legend_loc_inside, fontsize=9)
 
-    # 保存
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, dpi=dpi, transparent=transparent,
