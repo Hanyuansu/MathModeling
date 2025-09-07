@@ -198,8 +198,8 @@ def build_candidates_q4(
     taus   = (0.55, 0.70, 0.85, 1.00, 1.15, 1.30, 1.50),
     per_uav_keep: int = 28,
     dt_mask: float = 0.015,
-    mask_mode: str = 'L0',              # 'L0' | 'L1'
-    PTS: Optional[np.ndarray] = None     # L1时必需
+    mask_mode: str = 'L0',
+    PTS: Optional[np.ndarray] = None
 ) -> Tuple[List[Dict[str, Any]], np.ndarray]:
 
     tgrid = _time_grid(dt_mask)
@@ -555,9 +555,8 @@ def solve_q4_graph(
         "v_u_mps": [round(x, 3) for x in vs],
         "drops_s": [round(x, 3) for x in tds],
         "taus_s":  [round(x, 3) for x in taus_],
-        "uav_names": unames,             # ← 供重建/校验
-        "uav_indices": uidx,             # ← 供重建/校验
-        "bursts":  bursts,
+        "uav_names": unames,
+        "uav_indices": uidx,
         "cover_total_s": cover_val,
         "cover_intervals_s": intervals,
         "config": {

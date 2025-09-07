@@ -417,7 +417,7 @@ def _force_fill_to_15(chosen_list, tgrids_loc, dt_loc):
             used_per_uav[u] += 1
     return chosen_list
 
-# L1 抛光（坐标下降）——保持锁定 & 1s 间隔
+# L1 抛光
 def polish_L1_keep_course(selected: List[Dict[str,Any]],
                           tgrids: Dict[str,np.ndarray],
                           dt_mask: float = DT_STEP,
@@ -476,7 +476,7 @@ def polish_L1_keep_course(selected: List[Dict[str,Any]],
             final_union[nm] = np.logical_or(final_union[nm], c["mask_by_missile"][nm])
     return best, final_union
 
-#  L1 全局随机优化（模拟退火 SA）——保持锁定 & 1s 间隔
+#  L1 全局随机优化（模拟退火 SA）
 def global_sa_optimize_L1(selected: List[Dict[str,Any]],
                           tgrids: Dict[str,np.ndarray],
                           dt_mask: float = DT_STEP,
@@ -739,7 +739,6 @@ def _name2idx():  # 兼容旧名
     return _name_to_idx()
 
 def _ans_to_internal_selected(ans_selected):
-    """把 solve_q5 输出的 selected（带中文名与角度制）转回内部格式"""
     n2i = _name2idx()
     internal=[]
     for r in ans_selected:
@@ -771,7 +770,6 @@ def _recompute_cover_L1(selected_internal, dt: float, N_ANG:int=48, N_Z:int=9, I
     cover_sum = float(sum(union[nm].sum() * dt for nm in union))
     return cover_sum, union, tgrids
 
-# --------- 约束修复：同机 1s 间隔投放 ---------
 def _repair_min_gap_per_uav(selected_internal, min_gap: float = MIN_DROP_GAP):
     by_uav = {}
     for c in selected_internal:
@@ -936,7 +934,7 @@ def validate_q5(ans,
     _ = perturbation_curve(ans, sig_t_grid=curve_sig_t, sig_tau_rel=local_sigma_tau_rel,
                            reps=curve_reps, dt=DT_STEP, N_ANG=48, N_Z=9)
 
-# 邻域检验（最优解附近取样，保持锁定与 1s 间隔）
+# 邻域检验
 def _group_by_uav(selected_internal):
     by={}
     for c in selected_internal:
@@ -964,14 +962,14 @@ def _apply_small_jitter_per_shot(base_sel, eps_t: float, eps_tau: float, rng_loc
     cand = copy.deepcopy(base_sel)
     by = _group_by_uav(cand)
     for u,lst in by.items():
-        # 1) 独立小扰动
+        # 1. 独立小扰动
         for c in lst:
             td = clip(float(c["t_drop"]) + float(rng_loc.uniform(-eps_t,  eps_t)), 0.0, 60.0)
             ta = clip(float(c["tau"])    + float(rng_loc.uniform(-eps_tau, eps_tau)), 0.2, 12.0)
             c["t_drop"]  = td
             c["tau"]     = ta
             c["t_burst"] = td + ta
-        # 2) 投影
+        # 2. 投影
         lst.sort(key=lambda x:x["t_drop"])
         # 先前向保证间隔
         for i in range(1, len(lst)):
