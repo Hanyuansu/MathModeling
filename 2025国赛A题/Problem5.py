@@ -666,7 +666,7 @@ def solve_q5(
                                               rounds=POLISH_ROUNDS, N_ang=N_ANG, N_Z=N_Z, INCLUDE_SIDE=INCLUDE_SIDE)
         mode = "L0 → L1(polish)"
 
-    # ★ L1 全局 SA 优化（以抛光后的解为初始解）
+    # L1 全局 SA 优化
     if do_global_SA:
         before_score = sum(float(union[nm].sum()*dt_step) for nm in union)
         chosen, union = global_sa_optimize_L1(
@@ -679,7 +679,6 @@ def solve_q5(
         print(f"[info] SA 提升覆盖: {before_score:.3f} → {after_score:.3f} 秒")
         mode += " → L1(SA)"
 
-    # 汇总
     per_missile=[]
     for m in MISSILES:
         name=m["name"]; tgrid=tgrids[name]; mask=union[name]
@@ -733,9 +732,6 @@ def solve_q5(
         "rows": rows
     }
 
-# =========================
-# 验证/稳健性工具
-# =========================
 def _name_to_idx():
     return {UAVS[i]["name"]: i for i in range(len(UAVS))}
 
@@ -758,7 +754,6 @@ def _ans_to_internal_selected(ans_selected):
     return internal
 
 def _recompute_cover_L1(selected_internal, dt: float, N_ANG:int=48, N_Z:int=9, INCLUDE_SIDE:bool=True):
-    """对给定的 15 枚（内部格式）在 L1 下重算覆盖（并集），返回 cover_sum、union、tgrids"""
     tgrids = {m["name"]: _time_grid(missile_hit_time(m["M0"]), dt) for m in MISSILES}
     union  = {nm: np.zeros_like(tgrids[nm], dtype=bool) for nm in tgrids}
     PTS    = build_cylinder_samples(N_ang=N_ANG, N_Z=N_Z, include_side=INCLUDE_SIDE)
@@ -794,7 +789,7 @@ def _repair_min_gap_per_uav(selected_internal, min_gap: float = MIN_DROP_GAP):
             last = float(c["t_drop"])
     return selected_internal
 
-# --------- 随机扰动 & 全局随机 ---------
+# 随机扰动 和 全局随机
 def _perturb_solution(selected_internal, sigma_t: float = 0.6, sigma_tau_rel: float = 0.3, seed: int = None):
     rng_loc = np.random.default_rng(seed)
     out=[]
@@ -812,7 +807,6 @@ def _perturb_solution(selected_internal, sigma_t: float = 0.6, sigma_tau_rel: fl
 def _random_solution_global_like(selected_internal, seed: int = None):
     """保留每架 UAV 的(θ,v)锁定不变，重新在全局范围随机三发（同机 1s 间隔）"""
     rng_loc = np.random.default_rng(seed)
-    # 获得每架(uav)->(theta,v)
     thv = {}
     for c in selected_internal:
         thv[c["uav"]] = (float(c["theta"]), float(c["v"]))
@@ -952,10 +946,7 @@ def _group_by_uav(selected_internal):
     return by
 
 def _apply_uniform_shift_per_uav(base_sel, eps_t: float, eps_tau: float, rng_loc):
-    """
-    保持同机 3 发的相对间隔不变：对同一 UAV 的 t_drop 全体平移 δt，tau 全体平移 δτ。
-    这样自动保持“同机 1 s 间隔”，且只在小邻域里晃动。
-    """
+
     cand = copy.deepcopy(base_sel)
     by = _group_by_uav(cand)
     for u,lst in by.items():
@@ -980,7 +971,7 @@ def _apply_small_jitter_per_shot(base_sel, eps_t: float, eps_tau: float, rng_loc
             c["t_drop"]  = td
             c["tau"]     = ta
             c["t_burst"] = td + ta
-        # 2) 投影：修正到“最接近且相邻差≥MIN_DROP_GAP”的序列
+        # 2) 投影
         lst.sort(key=lambda x:x["t_drop"])
         # 先前向保证间隔
         for i in range(1, len(lst)):
@@ -1011,7 +1002,7 @@ def neighborhood_validate_best(ans,
 
     covers = []
     better = 0
-    best_improve = (-1e9, None)  # (cov, sample_idx)
+    best_improve = (-1e9, None)
     for k in range(n_samples):
         if rng_loc.random() < ratio_per_shot_jitter:
             cand = _apply_small_jitter_per_shot(base_sel, eps_t, eps_tau, rng_loc)
