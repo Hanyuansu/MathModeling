@@ -1,13 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Q4 遮掩时长时间轴图
-- 灰条：有效窗口
-- 红条：遮掩并集区间
-- 蓝虚线：投放时刻
-- 橙点划线：起爆时刻
-- 图例在图外右侧，不遮挡图像
-"""
-
 import os
 from typing import List, Tuple, Sequence
 
@@ -46,43 +36,36 @@ def plot_cover_timeline(
     fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
     y = 1.0
 
-    # 灰色背景有效窗口
     ax.hlines(y, t0, t1, color=bg_color, lw=10, label="有效窗口")
 
-    # 红色遮掩区间
     for (a, b) in intervals:
         if b > a:
             ax.hlines(y, a, b, color=fg_color, lw=10, label="遮掩段")
 
-    # 投放竖线（蓝色虚线）
     if vlines_drop:
         for i, x in enumerate(vlines_drop):
             if t0 <= x <= t1:
                 ax.axvline(x, color=drop_color, ls="--", lw=1.8,
                            label="投放" if i == 0 else None)
 
-    # 起爆竖线（橙色点划线）
     if vlines_burst:
         for i, x in enumerate(vlines_burst):
             if t0 <= x <= t1:
                 ax.axvline(x, color=burst_color, ls=":", lw=1.8,
                            label="起爆" if i == 0 else None)
 
-    # 坐标轴与标题
     ax.set_xlim(t0, t1)
     ax.set_ylim(0.8, 1.2)
     ax.set_yticks([])
     ax.set_xlabel("t / s")
     ax.set_title(title)
 
-    # 去重图例（放在图外右侧）
     handles, labels = ax.get_legend_handles_labels()
     uniq = dict(zip(labels, handles))
     ax.legend(uniq.values(), uniq.keys(),
               loc="upper left", bbox_to_anchor=(1.02, 1.0),
               borderaxespad=0.0, fontsize=9)
 
-    # 保存/展示
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, dpi=dpi, transparent=transparent,
@@ -93,10 +76,6 @@ def plot_cover_timeline(
     if close:
         plt.close(fig)
 
-
-# =========================
-# 使用 Q4 的数据绘图
-# =========================
 if __name__ == "__main__":
     out_dir = os.path.join("result", "Problem4_result")
 
