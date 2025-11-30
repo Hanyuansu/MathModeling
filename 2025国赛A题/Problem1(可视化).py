@@ -178,15 +178,15 @@ def plot_cover_timeline(save_path=None, show_intervals_text=False, show_total=Tr
     total_cover = sum(b - a for (a, b) in intervals)
 
     fig, ax = plt.subplots(figsize=(8.6, 2.0), constrained_layout=True)
-    ax.hlines(1, T0, T1, color="#dddddd", lw=10, label="有效窗口")
+    ax.hlines(1, T0, T1, color="#dddddd", lw=10, label="Valid Window")
     for (a, b) in intervals:
-        ax.hlines(1, a, b, color="tab:red", lw=10, label="遮掩段")
+        ax.hlines(1, a, b, color="tab:red", lw=10, label="Covering Section")
 
     ax.set_ylim(0.8, 1.2)
     ax.set_yticks([])
     ax.set_xlabel("t / s")
 
-    title = "M1  总遮蔽时长=1.496 s"
+    title = "M1  Total obscuration duration=1.496 s"
     ax.set_title(title)
 
     handles, labels = ax.get_legend_handles_labels()

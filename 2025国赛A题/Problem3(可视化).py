@@ -64,12 +64,12 @@ def plot_cover_timeline(
     fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
     y = 1.0
 
-    ax.hlines(y, t0, t1, color=bg_color, lw=bg_lw, label="有效窗口")
+    ax.hlines(y, t0, t1, color=bg_color, lw=bg_lw, label="Valid Window")
 
     for (a, b) in intervals:
         aa, bb = max(a, t0), min(b, t1)
         if bb > aa:
-            ax.hlines(y, aa, bb, color=fg_color, lw=fg_lw, label="遮掩段")
+            ax.hlines(y, aa, bb, color=fg_color, lw=fg_lw, label="Covering Section")
 
 
     def _draw_vlines(xs: Sequence[float] | None, ls: str, col: str, label: str):
@@ -86,8 +86,8 @@ def plot_cover_timeline(
             first = False
         return sorted(xs_in)
 
-    xs_drop_in  = _draw_vlines(vlines_drop,  drop_linestyle,  drop_color,  "投放")
-    xs_burst_in = _draw_vlines(vlines_burst, burst_linestyle, burst_color, "起爆")
+    xs_drop_in  = _draw_vlines(vlines_drop,  drop_linestyle,  drop_color,  "Drop")
+    xs_burst_in = _draw_vlines(vlines_burst, burst_linestyle, burst_color, "Brust")
 
     ax.set_xlim(t0, t1)
     ax.set_ylim(0.8, 1.30)
@@ -136,7 +136,7 @@ if __name__ == "__main__":
         xlim=xlim_Q3,
         vlines_drop=drops,
         vlines_burst=bursts,
-        title="M1  总遮蔽时长=6.16 s",
+        title="M1  Total obscuration duration=6.16 s",
         figsize=(8.6, 2.0),
         bg_color="#dddddd",
         fg_color="tab:red",

@@ -36,13 +36,13 @@ def plot_cover_timeline(
     fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
     y = 1.0
 
-    ax.hlines(y, t0, t1, color=bg_color, lw=bg_lw, label="有效窗口")
+    ax.hlines(y, t0, t1, color=bg_color, lw=bg_lw, label="Valid Window")
 
     for (a, b) in intervals:
         aa = max(a, t0)
         bb = min(b, t1)
         if bb > aa:
-            ax.hlines(y, aa, bb, color=fg_color, lw=fg_lw, label="遮掩段")
+            ax.hlines(y, aa, bb, color=fg_color, lw=fg_lw, label="Covering Section")
 
     ax.set_xlim(t0, t1)
     ax.set_ylim(0.8, 1.2)
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     plot_cover_timeline(
         intervals_TS,
         xlim=(0, t_burst_TS + 20.0),
-        title="M1  总遮蔽时长=5.060 s",
+        title="M1  Total obscuration duration=5.060 s",
         figsize=(8.6, 2.0),
         bg_color="#dddddd",
         fg_color="tab:red",

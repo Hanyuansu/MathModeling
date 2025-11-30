@@ -26,7 +26,7 @@ def plot_cover_timeline_multi(per_missile: List[Dict[str, Any]],
 
         t0 = min(a for a, _ in intervals)
         ax.hlines(y, t0, T_hit, color="#dddddd", lw=8,
-                  label="有效窗口" if idx == 0 else None)
+                  label="Vaild Window" if idx == 0 else None)
 
         mid_win = (t0 + T_hit) / 2
         ax.text(mid_win, y + 0.15, f"{missile} ({info['cover_s']:.2f}s)",
@@ -34,17 +34,17 @@ def plot_cover_timeline_multi(per_missile: List[Dict[str, Any]],
 
         for (a, b) in intervals:
             ax.hlines(y, a, b, color=colors[idx % len(colors)], lw=8,
-                      label=f"{missile}遮掩段" if idx == 0 else None)
+                      label=f"{missile} Covering Section" )
 
         for j, d in enumerate(drops):
             if t0 <= d <= T_hit:
                 ax.axvline(d, color="tab:blue", ls="--", lw=1.0, alpha=0.6,
-                           label="投放" if (idx == 0 and j == 0) else None)
+                           label="Drop" if (idx == 0 and j == 0) else None)
 
         for j, b in enumerate(bursts):
             if t0 <= b <= T_hit:
                 ax.axvline(b, color="tab:orange", ls=":", lw=1.0, alpha=0.6,
-                           label="起爆" if (idx == 0 and j == 0) else None)
+                           label="Brust" if (idx == 0 and j == 0) else None)
 
     ax.set_xlabel("t / s")
     if title:
@@ -87,6 +87,6 @@ if __name__ == "__main__":
         per_missile,
         drops=drops,
         bursts=bursts,
-        title=" 总遮蔽时长=28.23 s",
+        title=" Total obscuration duration=28.23 s",
         save_path=os.path.join(out_dir, "遮掩时长.png")
     )
